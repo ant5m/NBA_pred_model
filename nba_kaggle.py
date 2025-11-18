@@ -24,7 +24,6 @@ def is_sqlite_filename(name: str) -> bool:
 
 
 def run_kaggle_cli_download_and_find_sqlite(dataset: str, filename: Optional[str], dest_dir: str) -> str:
-    # Try specific file first
     if filename:
         try:
             cmd = [
