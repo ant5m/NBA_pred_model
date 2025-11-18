@@ -1,0 +1,12 @@
+# Ignore local database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+venv/
+env/

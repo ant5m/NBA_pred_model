@@ -1,0 +1,15 @@
+# Requirements for the NBA prediction project
+# Install into a virtual environment: python -m pip install -r requirements.txt
+
+# NBA API and data handling
+nba_api
+pandas
+numpy
+requests
+
+# Modeling
+scikit-learn
+xgboost
+
+# Optional: TensorFlow (on macOS Apple Silicon consider 'tensorflow-macos' instead)
+tensorflow
