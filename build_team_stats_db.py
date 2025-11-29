@@ -1,0 +1,433 @@
+#!/usr/bin/env python3
+"""
+Build and update comprehensive team stats database.
+Covers seasons 2022-23, 2023-24, 2024-25, 2025-26.
+
+Usage:
+    python3 build_team_stats_db.py --initial  # First time build
+    python3 build_team_stats_db.py --update   # Update with latest data
+    python3 build_team_stats_db.py --stats    # Show database stats
+"""
+
+import sqlite3
+import pandas as pd
+import time
+import argparse
+from nba_api.stats.endpoints import leaguedashteamstats, teamgamelog
+from nba_api.stats.static import teams
+
+# Configuration
+DB_NAME = 'nba_team_stats.db'
+SEASONS = ['2022-23', '2023-24', '2024-25', '2025-26']
+CURRENT_SEASON = '2025-26'
+
+def create_tables():
+    """Create database tables if they don't exist."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    # Teams table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS teams (
+            team_id INTEGER PRIMARY KEY,
+            full_name TEXT NOT NULL,
+            abbreviation TEXT NOT NULL,
+            nickname TEXT,
+            city TEXT,
+            state TEXT,
+            year_founded INTEGER
+        )
+    ''')
+    
+    # Season stats table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS season_stats (
+            team_id INTEGER,
+            season TEXT,
+            games_played INTEGER,
+            wins INTEGER,
+            losses INTEGER,
+            win_pct REAL,
+            minutes_played REAL,
+            points REAL,
+            field_goals_made REAL,
+            field_goals_attempted REAL,
+            field_goal_pct REAL,
+            three_pointers_made REAL,
+            three_pointers_attempted REAL,
+            three_point_pct REAL,
+            free_throws_made REAL,
+            free_throws_attempted REAL,
+            free_throw_pct REAL,
+            offensive_rebounds REAL,
+            defensive_rebounds REAL,
+            total_rebounds REAL,
+            assists REAL,
+            turnovers REAL,
+            steals REAL,
+            blocks REAL,
+            personal_fouls REAL,
+            plus_minus REAL,
+            PRIMARY KEY (team_id, season),
+            FOREIGN KEY (team_id) REFERENCES teams(team_id)
+        )
+    ''')
+    
+    # Game logs table (for current season)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS game_logs (
+            game_id TEXT,
+            team_id INTEGER,
+            season TEXT,
+            game_date TEXT,
+            matchup TEXT,
+            win_loss TEXT,
+            minutes INTEGER,
+            points INTEGER,
+            field_goals_made INTEGER,
+            field_goals_attempted INTEGER,
+            field_goal_pct REAL,
+            three_pointers_made INTEGER,
+            three_pointers_attempted INTEGER,
+            three_point_pct REAL,
+            free_throws_made INTEGER,
+            free_throws_attempted INTEGER,
+            free_throw_pct REAL,
+            offensive_rebounds INTEGER,
+            defensive_rebounds INTEGER,
+            total_rebounds INTEGER,
+            assists INTEGER,
+            turnovers INTEGER,
+            steals INTEGER,
+            blocks INTEGER,
+            personal_fouls INTEGER,
+            plus_minus INTEGER,
+            PRIMARY KEY (game_id, team_id),
+            FOREIGN KEY (team_id) REFERENCES teams(team_id)
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+    print(f"✓ Database tables created/verified in {DB_NAME}")
+
+def get_all_teams():
+    """Get all NBA teams."""
+    all_teams = teams.get_teams()
+    print(f"✓ Found {len(all_teams)} NBA teams")
+    return all_teams
+
+def update_team_info(all_teams):
+    """Insert or update team information."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    for team in all_teams:
+        cursor.execute('''
+            INSERT OR REPLACE INTO teams 
+            (team_id, full_name, abbreviation, nickname, city, state, year_founded)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            team['id'],
+            team['full_name'],
+            team['abbreviation'],
+            team['nickname'],
+            team['city'],
+            team['state'],
+            team['year_founded']
+        ))
+    
+    conn.commit()
+    conn.close()
+    print(f"✓ Updated {len(all_teams)} team records")
+
+def fetch_season_stats(season):
+    """Fetch team stats for a specific season."""
+    print(f"Fetching stats for {season}...")
+    
+    try:
+        stats = leaguedashteamstats.LeagueDashTeamStats(
+            season=season,
+            per_mode_detailed='PerGame'
+        )
+        df = stats.get_data_frames()[0]
+        time.sleep(0.6)  # Rate limiting
+        return df
+    except Exception as e:
+        print(f"  ⚠ Error fetching {season}: {e}")
+        return None
+
+def update_season_stats(seasons=None):
+    """Update season stats for specified seasons."""
+    if seasons is None:
+        seasons = SEASONS
+    
+    conn = sqlite3.connect(DB_NAME)
+    
+    total_records = 0
+    for season in seasons:
+        df = fetch_season_stats(season)
+        
+        if df is not None and not df.empty:
+            # Select and rename relevant columns
+            stats_df = pd.DataFrame({
+                'team_id': df['TEAM_ID'],
+                'season': season,
+                'games_played': df['GP'],
+                'wins': df['W'],
+                'losses': df['L'],
+                'win_pct': df['W_PCT'],
+                'minutes_played': df['MIN'],
+                'points': df['PTS'],
+                'field_goals_made': df['FGM'],
+                'field_goals_attempted': df['FGA'],
+                'field_goal_pct': df['FG_PCT'],
+                'three_pointers_made': df['FG3M'],
+                'three_pointers_attempted': df['FG3A'],
+                'three_point_pct': df['FG3_PCT'],
+                'free_throws_made': df['FTM'],
+                'free_throws_attempted': df['FTA'],
+                'free_throw_pct': df['FT_PCT'],
+                'offensive_rebounds': df['OREB'],
+                'defensive_rebounds': df['DREB'],
+                'total_rebounds': df['REB'],
+                'assists': df['AST'],
+                'turnovers': df['TOV'],
+                'steals': df['STL'],
+                'blocks': df['BLK'],
+                'personal_fouls': df['PF'],
+                'plus_minus': df['PLUS_MINUS']
+            })
+            
+            # Insert/update records
+            stats_df.to_sql('season_stats', conn, if_exists='append', index=False)
+            
+            # Remove duplicates (keep latest)
+            cursor = conn.cursor()
+            cursor.execute('''
+                DELETE FROM season_stats
+                WHERE rowid NOT IN (
+                    SELECT MAX(rowid)
+                    FROM season_stats
+                    GROUP BY team_id, season
+                )
+            ''')
+            conn.commit()
+            
+            total_records += len(stats_df)
+            print(f"  ✓ Saved {len(stats_df)} team season records for {season}")
+    
+    conn.close()
+    print(f"✓ Total season stats records: {total_records}")
+
+def update_current_season_game_logs(limit=None):
+    """Fetch game logs for all teams in current season."""
+    print(f"\nFetching game logs for {CURRENT_SEASON}...")
+    
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    # Get all team IDs
+    cursor.execute("SELECT team_id, abbreviation FROM teams")
+    all_teams = cursor.fetchall()
+    
+    if limit:
+        all_teams = all_teams[:limit]
+    
+    total_games = 0
+    for idx, (team_id, abbr) in enumerate(all_teams, 1):
+        try:
+            # Fetch game log for this team
+            gamelog = teamgamelog.TeamGameLog(
+                team_id=team_id,
+                season=CURRENT_SEASON
+            )
+            df = gamelog.get_data_frames()[0]
+            
+            if not df.empty:
+                # Prepare game log data
+                games_df = pd.DataFrame({
+                    'game_id': df['Game_ID'],
+                    'team_id': team_id,
+                    'season': CURRENT_SEASON,
+                    'game_date': df['GAME_DATE'],
+                    'matchup': df['MATCHUP'],
+                    'win_loss': df['WL'],
+                    'minutes': df['MIN'],
+                    'points': df['PTS'],
+                    'field_goals_made': df['FGM'],
+                    'field_goals_attempted': df['FGA'],
+                    'field_goal_pct': df['FG_PCT'],
+                    'three_pointers_made': df['FG3M'],
+                    'three_pointers_attempted': df['FG3A'],
+                    'three_point_pct': df['FG3_PCT'],
+                    'free_throws_made': df['FTM'],
+                    'free_throws_attempted': df['FTA'],
+                    'free_throw_pct': df['FT_PCT'],
+                    'offensive_rebounds': df['OREB'],
+                    'defensive_rebounds': df['DREB'],
+                    'total_rebounds': df['REB'],
+                    'assists': df['AST'],
+                    'turnovers': df['TOV'],
+                    'steals': df['STL'],
+                    'blocks': df['BLK'],
+                    'personal_fouls': df['PF'],
+                    'plus_minus': df['PLUS_MINUS']
+                })
+                
+                # Insert/replace records
+                games_df.to_sql('game_logs', conn, if_exists='append', index=False)
+                
+                # Remove duplicates
+                cursor.execute('''
+                    DELETE FROM game_logs
+                    WHERE rowid NOT IN (
+                        SELECT MAX(rowid)
+                        FROM game_logs
+                        GROUP BY game_id, team_id
+                    )
+                ''')
+                conn.commit()
+                
+                total_games += len(games_df)
+                print(f"  Progress: {idx}/{len(all_teams)} teams ({abbr}: {len(games_df)} games)")
+            
+            time.sleep(0.6)  # Rate limiting
+            
+        except Exception as e:
+            print(f"  ⚠ Error fetching game log for {abbr}: {e}")
+            continue
+    
+    conn.close()
+    print(f"✓ Total game logs: {total_games} games")
+
+def initial_build(limit=None):
+    """Perform initial database build."""
+    print("=" * 60)
+    print("INITIAL BUILD - NBA Team Stats Database")
+    print("=" * 60)
+    
+    # Step 1: Create tables
+    create_tables()
+    
+    # Step 2: Get and store team info
+    all_teams = get_all_teams()
+    update_team_info(all_teams)
+    
+    # Step 3: Fetch season stats for all seasons
+    update_season_stats(SEASONS)
+    
+    # Step 4: Fetch game logs for current season
+    update_current_season_game_logs(limit=limit)
+    
+    print("\n" + "=" * 60)
+    print("✓ INITIAL BUILD COMPLETE")
+    print("=" * 60)
+    show_stats()
+
+def update_database():
+    """Update database with latest data (incremental)."""
+    print("=" * 60)
+    print("UPDATE - NBA Team Stats Database")
+    print("=" * 60)
+    
+    # Update current season stats
+    update_season_stats([CURRENT_SEASON])
+    
+    # Update current season game logs
+    update_current_season_game_logs()
+    
+    print("\n" + "=" * 60)
+    print("✓ UPDATE COMPLETE")
+    print("=" * 60)
+    show_stats()
+
+def show_stats():
+    """Display database statistics."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    print("\n" + "=" * 60)
+    print("DATABASE STATISTICS")
+    print("=" * 60)
+    
+    # Teams count
+    cursor.execute("SELECT COUNT(*) FROM teams")
+    team_count = cursor.fetchone()[0]
+    print(f"Teams: {team_count}")
+    
+    # Season stats count
+    cursor.execute("SELECT COUNT(*) FROM season_stats")
+    season_count = cursor.fetchone()[0]
+    print(f"Season stats records: {season_count}")
+    
+    # Season breakdown
+    cursor.execute("""
+        SELECT season, COUNT(*) as count
+        FROM season_stats
+        GROUP BY season
+        ORDER BY season
+    """)
+    print("\nSeason breakdown:")
+    for season, count in cursor.fetchall():
+        print(f"  {season}: {count} teams")
+    
+    # Game logs count
+    cursor.execute("SELECT COUNT(*) FROM game_logs")
+    game_count = cursor.fetchone()[0]
+    print(f"\nGame logs: {game_count} total games")
+    
+    # Current season game count
+    cursor.execute("""
+        SELECT COUNT(DISTINCT game_id) as games
+        FROM game_logs
+        WHERE season = ?
+    """, (CURRENT_SEASON,))
+    current_games = cursor.fetchone()[0]
+    print(f"  {CURRENT_SEASON} season: {current_games} games logged")
+    
+    conn.close()
+    print("=" * 60)
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Build and update NBA team stats database'
+    )
+    parser.add_argument(
+        '--initial',
+        action='store_true',
+        help='Perform initial database build (all seasons)'
+    )
+    parser.add_argument(
+        '--update',
+        action='store_true',
+        help='Update database with latest data (current season only)'
+    )
+    parser.add_argument(
+        '--stats',
+        action='store_true',
+        help='Show database statistics'
+    )
+    parser.add_argument(
+        '--limit',
+        type=int,
+        help='Limit number of teams (for testing)'
+    )
+    
+    args = parser.parse_args()
+    
+    if args.initial:
+        initial_build(limit=args.limit)
+    elif args.update:
+        update_database()
+    elif args.stats:
+        show_stats()
+    else:
+        parser.print_help()
+        print("\nExample usage:")
+        print("  python3 build_team_stats_db.py --initial  # First time")
+        print("  python3 build_team_stats_db.py --update   # Daily updates")
+        print("  python3 build_team_stats_db.py --stats    # View stats")
+
+if __name__ == '__main__':
+    main()
