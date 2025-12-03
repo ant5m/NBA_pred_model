@@ -2,14 +2,14 @@
 # Install into a virtual environment: python -m pip install -r requirements.txt
 
 # NBA API and data handling
-nba_api
-pandas
-numpy
-requests
+nba_api>=1.1.0
+pandas>=1.5.0
+numpy>=1.23.0
 
-# Modeling
-scikit-learn
-xgboost
+# Machine Learning & Deep Learning
+scikit-learn>=1.2.0
+tensorflow>=2.13.0
 
-# Optional: TensorFlow (on macOS Apple Silicon consider 'tensorflow-macos' instead)
-tensorflow
+# For macOS Apple Silicon (M1/M2), use these instead of tensorflow:
+# tensorflow-macos>=2.13.0
+# tensorflow-metal>=1.0.0

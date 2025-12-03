@@ -10,3 +10,21 @@ __pycache__/
 # Virtual environment
 venv/
 env/
+.venv/
+
+# Saved models (don't commit trained models to git)
+nba_model_saved/
+ensemble_model_saved/
+
+# Log files
+*.log
+*.pid
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

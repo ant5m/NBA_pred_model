@@ -291,20 +291,26 @@ def initial_build(limit_players=None):
 
 
 def update_database():
-
+    """Update database with latest data (current season only)."""
+    print("=" * 80)
+    print(f"UPDATE - NBA Player Stats Database ({CURRENT_SEASON})")
+    print("=" * 80)
     
     conn = sqlite3.connect(DB_PATH)
     
-
+    # Update ONLY current season stats
+    print(f"\nUpdating season stats for {CURRENT_SEASON} only...")
     update_season_stats(conn, [CURRENT_SEASON])
     
-
+    # Update current season game logs
+    print(f"\nUpdating game logs for {CURRENT_SEASON}...")
     update_current_season_game_logs(conn)
     
     conn.close()
     
-
-
+    print("\n" + "=" * 80)
+    print(f"✓ UPDATE COMPLETE ({CURRENT_SEASON} only)")
+    print("=" * 80)
 
 def show_stats():
     """Show database statistics."""

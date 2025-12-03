@@ -163,6 +163,7 @@ def update_season_stats(seasons=None):
         seasons = SEASONS
     
     conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
     
     total_records = 0
     for season in seasons:
@@ -199,21 +200,33 @@ def update_season_stats(seasons=None):
                 'plus_minus': df['PLUS_MINUS']
             })
             
-            # Insert/update records
-            stats_df.to_sql('season_stats', conn, if_exists='append', index=False)
+            # Use INSERT OR REPLACE for updates
+            for _, row in stats_df.iterrows():
+                cursor.execute('''
+                    INSERT OR REPLACE INTO season_stats
+                    (team_id, season, games_played, wins, losses, win_pct,
+                     minutes_played, points, field_goals_made, field_goals_attempted,
+                     field_goal_pct, three_pointers_made, three_pointers_attempted,
+                     three_point_pct, free_throws_made, free_throws_attempted,
+                     free_throw_pct, offensive_rebounds, defensive_rebounds,
+                     total_rebounds, assists, turnovers, steals, blocks,
+                     personal_fouls, plus_minus)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    row['team_id'], row['season'], row['games_played'],
+                    row['wins'], row['losses'], row['win_pct'],
+                    row['minutes_played'], row['points'],
+                    row['field_goals_made'], row['field_goals_attempted'],
+                    row['field_goal_pct'], row['three_pointers_made'],
+                    row['three_pointers_attempted'], row['three_point_pct'],
+                    row['free_throws_made'], row['free_throws_attempted'],
+                    row['free_throw_pct'], row['offensive_rebounds'],
+                    row['defensive_rebounds'], row['total_rebounds'],
+                    row['assists'], row['turnovers'], row['steals'],
+                    row['blocks'], row['personal_fouls'], row['plus_minus']
+                ))
             
-            # Remove duplicates (keep latest)
-            cursor = conn.cursor()
-            cursor.execute('''
-                DELETE FROM season_stats
-                WHERE rowid NOT IN (
-                    SELECT MAX(rowid)
-                    FROM season_stats
-                    GROUP BY team_id, season
-                )
-            ''')
             conn.commit()
-            
             total_records += len(stats_df)
             print(f"  ✓ Saved {len(stats_df)} team season records for {season}")
     
@@ -272,7 +285,7 @@ def update_current_season_game_logs(limit=None):
                     'steals': df['STL'],
                     'blocks': df['BLK'],
                     'personal_fouls': df['PF'],
-                    'plus_minus': df['PLUS_MINUS']
+                    'plus_minus': df.get('PLUS_MINUS', 0)  # Use get() with default
                 })
                 
                 # Insert/replace records
@@ -326,19 +339,21 @@ def initial_build(limit=None):
     show_stats()
 
 def update_database():
-    """Update database with latest data (incremental)."""
+    """Update database with latest data (current season only)."""
     print("=" * 60)
-    print("UPDATE - NBA Team Stats Database")
+    print(f"UPDATE - NBA Team Stats Database ({CURRENT_SEASON})")
     print("=" * 60)
     
-    # Update current season stats
+    # Update ONLY current season stats
+    print(f"\nUpdating season stats for {CURRENT_SEASON} only...")
     update_season_stats([CURRENT_SEASON])
     
     # Update current season game logs
+    print(f"\nUpdating game logs for {CURRENT_SEASON}...")
     update_current_season_game_logs()
     
     print("\n" + "=" * 60)
-    print("✓ UPDATE COMPLETE")
+    print(f"✓ UPDATE COMPLETE ({CURRENT_SEASON} only)")
     print("=" * 60)
     show_stats()
 
