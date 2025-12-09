@@ -47,12 +47,14 @@ def analyze_predictions():
             reader = csv.DictReader(f)
             
             for row in reader:
-                # Get prediction probability
+                # Get prediction probability (handle multiple column names)
                 try:
                     if 'calibrated_home_prob' in row and row['calibrated_home_prob']:
                         pred_home_prob = float(row['calibrated_home_prob'])
                     elif 'predicted_home_prob' in row and row['predicted_home_prob']:
                         pred_home_prob = float(row['predicted_home_prob'])
+                    elif 'home_win_prob' in row and row['home_win_prob']:
+                        pred_home_prob = float(row['home_win_prob'])
                     else:
                         continue
                 except:
@@ -67,27 +69,38 @@ def analyze_predictions():
                 else:
                     overall_stats['away_predictions'] += 1
                 
-                # Check actual results
+                # Check actual results (handle multiple column name formats)
+                home_score = None
+                away_score = None
+                
+                # Try different column names
                 if row.get('actual_home_score'):
                     try:
                         home_score = int(row['actual_home_score'])
                         away_score = int(row['actual_away_score'])
-                        actual_home_win = home_score > away_score
-                        
-                        overall_stats['total_with_results'] += 1
-                        if actual_home_win:
-                            overall_stats['home_actual_wins'] += 1
-                        
-                        # Check correctness
-                        predicted_home_win = pred_home_prob >= 0.5
-                        if predicted_home_win == actual_home_win:
-                            overall_stats['total_correct'] += 1
-                            overall_stats['by_date'][row['date']]['correct'] += 1
-                        
-                        overall_stats['by_date'][row['date']]['total'] += 1
-                        
                     except:
                         pass
+                elif row.get('home_score'):
+                    try:
+                        home_score = int(row['home_score'])
+                        away_score = int(row['away_score'])
+                    except:
+                        pass
+                
+                if home_score is not None and away_score is not None:
+                    actual_home_win = home_score > away_score
+                    
+                    overall_stats['total_with_results'] += 1
+                    if actual_home_win:
+                        overall_stats['home_actual_wins'] += 1
+                    
+                    # Check correctness
+                    predicted_home_win = pred_home_prob >= 0.5
+                    if predicted_home_win == actual_home_win:
+                        overall_stats['total_correct'] += 1
+                        overall_stats['by_date'][row['date']]['correct'] += 1
+                    
+                    overall_stats['by_date'][row['date']]['total'] += 1
     
     # Display overall statistics
     print("OVERALL PERFORMANCE")
