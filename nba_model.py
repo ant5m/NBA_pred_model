@@ -82,21 +82,43 @@ class NBAGamePredictor:
                        'defensive_rebounds', 'plus_minus']:
                 features[f'team_season_{col}'] = 0.0
         
-        # Recent performance (last 10 games averages)
+        # Recent performance (last 10 games averages) and momentum (last 5 games)
         if not games_df.empty:
             # Win percentage in last 10
             features['team_recent_win_pct'] = (games_df['win_loss'] == 'W').mean()
-            
-            # Averages from recent games
+
+            # Averages from recent games (last 10)
             for col in ['points', 'field_goal_pct', 'three_point_pct', 'free_throw_pct',
                        'total_rebounds', 'assists', 'steals', 'blocks', 'turnovers', 'plus_minus']:
                 features[f'team_recent_{col}'] = games_df[col].mean()
+
+            # Momentum: last 5 games (more responsive indicator)
+            last5 = games_df.head(5)
+            features['team_momentum_win_pct_5'] = (last5['win_loss'] == 'W').mean()
+            # Use plus_minus as point differential per game if available
+            if 'plus_minus' in last5.columns:
+                features['team_momentum_point_diff_5'] = last5['plus_minus'].mean()
+            else:
+                # Fallback to points - (opponent points) not available here; use recent points as proxy
+                features['team_momentum_point_diff_5'] = last5['points'].mean() - games_df['points'].mean()
+            
+            # Volatility features (help predict blowouts vs close games)
+            features['team_score_volatility'] = games_df['points'].std() if len(games_df) > 1 else 0.0
+            features['team_margin_volatility'] = games_df['plus_minus'].std() if len(games_df) > 1 else 0.0
+            features['team_blowout_rate'] = (games_df['plus_minus'].abs() > 15).mean()
         else:
             # Fill with defaults
             features['team_recent_win_pct'] = 0.5
             for col in ['points', 'field_goal_pct', 'three_point_pct', 'free_throw_pct',
                        'total_rebounds', 'assists', 'steals', 'blocks', 'turnovers', 'plus_minus']:
                 features[f'team_recent_{col}'] = 0.0
+            # Default momentum
+            features['team_momentum_win_pct_5'] = 0.5
+            features['team_momentum_point_diff_5'] = 0.0
+            # Default volatility
+            features['team_score_volatility'] = 0.0
+            features['team_margin_volatility'] = 0.0
+            features['team_blowout_rate'] = 0.0
         
         return features
     
@@ -187,6 +209,34 @@ class NBAGamePredictor:
             features[f'away_{k}'] = v
         for k, v in away_player_features.items():
             features[f'away_{k}'] = v
+        
+        # Add differential features (home - away comparisons)
+        key_stats = ['win_pct', 'points', 'field_goal_pct', 'three_point_pct', 
+                     'assists', 'total_rebounds', 'plus_minus', 'recent_win_pct',
+                     'top_player_avg_points', 'top_player_avg_assists', 'top_player_avg_rebounds']
+        
+        for stat in key_stats:
+            home_key = f'home_{stat}'
+            away_key = f'away_{stat}'
+            if home_key in features and away_key in features:
+                home_val = features[home_key] if features[home_key] is not None else 0
+                away_val = features[away_key] if features[away_key] is not None else 0
+                features[f'{stat}_diff'] = home_val - away_val
+        
+        # Add momentum features (recent performance trend)
+        if 'home_recent_win_pct' in features and 'home_win_pct' in features:
+            home_recent = features['home_recent_win_pct'] if features['home_recent_win_pct'] is not None else 0
+            home_overall = features['home_win_pct'] if features['home_win_pct'] is not None else 0
+            features['home_momentum'] = home_recent - home_overall
+        
+        if 'away_recent_win_pct' in features and 'away_win_pct' in features:
+            away_recent = features['away_recent_win_pct'] if features['away_recent_win_pct'] is not None else 0
+            away_overall = features['away_win_pct'] if features['away_win_pct'] is not None else 0
+            features['away_momentum'] = away_recent - away_overall
+        
+        # Momentum differential
+        if 'home_momentum' in features and 'away_momentum' in features:
+            features['momentum_diff'] = features['home_momentum'] - features['away_momentum']
         
         # Add home court advantage feature
         features['home_court_advantage'] = 1.0
@@ -290,53 +340,54 @@ class NBAGamePredictor:
         return X, y_outcome, y_points, sample_weights
     
     def build_model(self, input_dim):
-        """Create Keras multi-output model with deep architecture."""
-        # Input layer
+        """Create Keras multi-output model with deep architecture, regularization, and residual connections."""
+        # Input layer with normalization
         inputs = layers.Input(shape=(input_dim,))
+        x = layers.BatchNormalization()(inputs)
         
-        # Deep shared layers for feature extraction
-        x = layers.Dense(512, activation='relu')(inputs)
-        x = layers.BatchNormalization()(x)
-        x = layers.Dropout(0.3)(x)
-        
-        x = layers.Dense(384, activation='relu')(x)
-        x = layers.BatchNormalization()(x)
-        x = layers.Dropout(0.3)(x)
-        
-        x = layers.Dense(256, activation='relu')(x)
-        x = layers.BatchNormalization()(x)
-        x = layers.Dropout(0.3)(x)
-        
-        x = layers.Dense(192, activation='relu')(x)
+        # Deep shared layers with L2 regularization and reduced dropout
+        x = layers.Dense(512, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001))(x)
         x = layers.BatchNormalization()(x)
         x = layers.Dropout(0.2)(x)
         
-        x = layers.Dense(128, activation='relu')(x)
+        x = layers.Dense(384, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001))(x)
         x = layers.BatchNormalization()(x)
         x = layers.Dropout(0.2)(x)
         
-        x = layers.Dense(96, activation='relu')(x)
+        x = layers.Dense(256, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001))(x)
         x = layers.BatchNormalization()(x)
         x = layers.Dropout(0.2)(x)
         
-        x = layers.Dense(64, activation='relu')(x)
+        x = layers.Dense(192, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001))(x)
         x = layers.BatchNormalization()(x)
-        x = layers.Dropout(0.2)(x)
+        x = layers.Dropout(0.15)(x)
+        
+        x = layers.Dense(128, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001))(x)
+        x = layers.BatchNormalization()(x)
+        x = layers.Dropout(0.15)(x)
+        
+        x = layers.Dense(96, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001))(x)
+        x = layers.BatchNormalization()(x)
+        x = layers.Dropout(0.1)(x)
+        
+        x = layers.Dense(64, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001))(x)
+        x = layers.BatchNormalization()(x)
+        x = layers.Dropout(0.1)(x)
         
         # Branch 1: Game outcome prediction (binary classification)
-        outcome_branch = layers.Dense(48, activation='relu')(x)
+        outcome_branch = layers.Dense(48, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001))(x)
         outcome_branch = layers.BatchNormalization()(outcome_branch)
-        outcome_branch = layers.Dropout(0.2)(outcome_branch)
-        outcome_branch = layers.Dense(32, activation='relu')(outcome_branch)
-        outcome_branch = layers.Dropout(0.2)(outcome_branch)
+        outcome_branch = layers.Dropout(0.1)(outcome_branch)
+        outcome_branch = layers.Dense(32, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001))(outcome_branch)
+        outcome_branch = layers.Dropout(0.1)(outcome_branch)
         outcome_output = layers.Dense(1, activation='sigmoid', name='outcome')(outcome_branch)
         
         # Branch 2: Points prediction (regression)
-        points_branch = layers.Dense(48, activation='relu')(x)
+        points_branch = layers.Dense(48, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001))(x)
         points_branch = layers.BatchNormalization()(points_branch)
-        points_branch = layers.Dropout(0.2)(points_branch)
-        points_branch = layers.Dense(32, activation='relu')(points_branch)
-        points_branch = layers.Dropout(0.2)(points_branch)
+        points_branch = layers.Dropout(0.1)(points_branch)
+        points_branch = layers.Dense(32, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001))(points_branch)
+        points_branch = layers.Dropout(0.1)(points_branch)
         points_output = layers.Dense(2, activation='linear', name='points')(points_branch)
         
         # Create model with multiple outputs
@@ -345,16 +396,16 @@ class NBAGamePredictor:
             outputs=[outcome_output, points_output]
         )
         
-        # Compile with different losses for each output
+        # Compile with Huber loss for robustness and gradient clipping
         model.compile(
-            optimizer=keras.optimizers.Adam(learning_rate=0.001),
+            optimizer=keras.optimizers.Adam(learning_rate=0.001, clipnorm=1.0),
             loss={
                 'outcome': 'binary_crossentropy',
-                'points': 'mse'
+                'points': 'huber'
             },
             loss_weights={
                 'outcome': 1.0,
-                'points': 0.5
+                'points': 0.3
             },
             metrics={
                 'outcome': ['accuracy'],
@@ -364,7 +415,7 @@ class NBAGamePredictor:
         
         return model
     
-    def train(self, X, y_outcome, y_points, sample_weights=None, epochs=150, batch_size=32, validation_split=0.2):
+    def train(self, X, y_outcome, y_points, sample_weights=None, epochs=50, batch_size=32, validation_split=0.2):
         """Fit model on training data with optional sample weighting."""
         # Normalize features
         X_scaled = self.scaler.fit_transform(X)
@@ -419,20 +470,122 @@ class NBAGamePredictor:
         
         return history
     
-    def fine_tune(self, X, y_outcome, y_points, epochs=25, batch_size=32, learning_rate=0.0001):
-        """Fine-tune existing model on new data."""
+    def fine_tune(self, X, y_outcome, y_points, epochs=10, batch_size=32, learning_rate=0.0001, validation_split=0.15):
+        """Fine-tune existing model on new data with proper validation and weight preservation."""
         if self.model is None:
             raise ValueError("No model to fine-tune")
-        X_scaled = self.scaler.transform(X)
+        
+        # Split data BEFORE scaling to prevent leakage
+        if validation_split > 0:
+            split_idx = int(len(X) * (1 - validation_split))
+            X_train, X_val = X[:split_idx], X[split_idx:]
+            y_out_train, y_out_val = y_outcome[:split_idx], y_outcome[split_idx:]
+            y_pts_train, y_pts_val = y_points[:split_idx], y_points[split_idx:]
+            
+            X_train_scaled = self.scaler.transform(X_train)
+            X_val_scaled = self.scaler.transform(X_val)
+            validation_data = (X_val_scaled, {'outcome': y_out_val, 'points': y_pts_val})
+        else:
+            X_train_scaled = self.scaler.transform(X)
+            y_out_train, y_pts_train = y_outcome, y_points
+            validation_data = None
+        
+        # Recompile with lower learning rate for fine-tuning
         self.model.compile(
-            optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
-            loss={'outcome': 'binary_crossentropy', 'points': 'mse'},
-            loss_weights={'outcome': 1.0, 'points': 0.5},
-            metrics={'outcome': ['accuracy'], 'points': ['mae']}
+            optimizer=keras.optimizers.Adam(learning_rate=learning_rate, clipnorm=1.0),
+            loss={'outcome': 'binary_crossentropy', 'points': 'huber'},
+            loss_weights={'outcome': 1.0, 'points': 0.3},
+            metrics={'outcome': ['accuracy', keras.metrics.AUC(name='auc')], 'points': ['mae', 'mse']}
         )
-        history = self.model.fit(X_scaled, {'outcome': y_outcome, 'points': y_points},
-                                 epochs=epochs, batch_size=batch_size, validation_split=0.1, verbose=1)
+        
+        # Use callbacks to prevent overfitting during fine-tuning
+        early_stopping = keras.callbacks.EarlyStopping(
+            monitor='val_loss' if validation_data else 'loss',
+            patience=5,
+            restore_best_weights=True,
+            min_delta=0.0001
+        )
+        
+        reduce_lr = keras.callbacks.ReduceLROnPlateau(
+            monitor='val_loss' if validation_data else 'loss',
+            factor=0.7,
+            patience=3,
+            min_lr=learning_rate * 0.1,
+            verbose=1
+        )
+        
+        callbacks = [early_stopping, reduce_lr] if validation_data else [reduce_lr]
+        
+        history = self.model.fit(
+            X_train_scaled,
+            {'outcome': y_out_train, 'points': y_pts_train},
+            epochs=epochs,
+            batch_size=batch_size,
+            validation_data=validation_data,
+            callbacks=callbacks,
+            verbose=1
+        )
+        
         return history
+    
+    def match_player_names(self, abbreviated_names, team_abbr, seasons):
+        """Convert abbreviated names (e.g., 'J. Tatum') to full database names (e.g., 'Jayson Tatum')."""
+        if not abbreviated_names:
+            return []
+        
+        # Handle single season string or list of seasons
+        if isinstance(seasons, str):
+            seasons = [seasons]
+        
+        conn = sqlite3.connect(PLAYER_DB)
+        placeholders_seasons = ','.join(['?' for _ in seasons])
+        
+        # Get all players for this team from the database
+        query = f"""
+            SELECT DISTINCT player_name, season, minutes_played
+            FROM season_stats
+            WHERE team_abbreviation = ? 
+                AND season IN ({placeholders_seasons})
+            ORDER BY season DESC, minutes_played DESC
+        """
+        params = [team_abbr] + list(seasons)
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        db_players = cursor.fetchall()
+        conn.close()
+        
+        matched_names = []
+        for abbr_name in abbreviated_names:
+            # Try exact match first
+            exact_match = [p[0] for p in db_players if p[0] == abbr_name]
+            if exact_match:
+                matched_names.append(exact_match[0])
+                continue
+            
+            # Parse abbreviated name (e.g., "J. Tatum" -> initial="J", last="Tatum")
+            parts = abbr_name.split()
+            if len(parts) >= 2 and parts[0].endswith('.'):
+                first_initial = parts[0][0].upper()
+                last_name = ' '.join(parts[1:])  # Handle multi-part last names
+                
+                # Find matching players (same initial + last name)
+                matches = [p[0] for p in db_players 
+                          if p[0].split()[0][0].upper() == first_initial 
+                          and p[0].split()[-1].lower() == last_name.lower()]
+                
+                if matches:
+                    # If multiple matches, prefer the one with most recent/most minutes
+                    matched_names.append(matches[0])
+                    continue
+            
+            # If no match found, try fuzzy matching on last name only
+            if parts:
+                last_name = parts[-1].replace('.', '')
+                matches = [p[0] for p in db_players if p[0].split()[-1].lower() == last_name.lower()]
+                if matches:
+                    matched_names.append(matches[0])
+        
+        return matched_names
     
     def get_roster_player_stats(self, player_names, team_abbr, seasons=['2022-23', '2023-24', '2024-25', '2025-26']):
         """Get aggregated stats for a given roster (fallback to top players)."""
@@ -443,15 +596,23 @@ class NBAGamePredictor:
         if isinstance(seasons, str):
             seasons = [seasons]
         
+        # Convert abbreviated names to full database names
+        matched_names = self.match_player_names(player_names, team_abbr, seasons)
+        
+        if not matched_names:
+            # No matches found, fall back to top players
+            return self.get_top_players_features(team_abbr, seasons, n_players=5)
+        
         conn = sqlite3.connect(PLAYER_DB)
         
         # Query for specific players across all seasons
-        placeholders_players = ','.join(['?' for _ in player_names])
+        placeholders_players = ','.join(['?' for _ in matched_names])
         placeholders_seasons = ','.join(['?' for _ in seasons])
         query = f"""
             SELECT 
                 points, assists, total_rebounds, steals, blocks, turnovers,
-                field_goal_pct, three_point_pct, free_throw_pct, minutes_played
+                field_goal_pct, three_point_pct, free_throw_pct, minutes_played,
+                player_name
             FROM season_stats
             WHERE player_name IN ({placeholders_players}) 
                 AND team_abbreviation = ? 
@@ -460,7 +621,7 @@ class NBAGamePredictor:
             LIMIT 10
         """
         
-        params = list(player_names) + [team_abbr] + list(seasons)
+        params = list(matched_names) + [team_abbr] + list(seasons)
         players_df = pd.read_sql_query(query, conn, params=params)
         conn.close()
         
@@ -485,7 +646,7 @@ class NBAGamePredictor:
             features['best_player_rebounds'] = players_df['total_rebounds'].iloc[0]
         else:
             # Fall back to default top players if roster data incomplete
-            return self.get_top_players_features(team_abbr, season, n_players=5)
+            return self.get_top_players_features(team_abbr, seasons, n_players=5)
         
         return features
     
@@ -590,7 +751,7 @@ class EnsembleNBAPredictor:
         if model_path and os.path.exists(model_path):
             self.load_ensemble(model_path)
     
-    def train_ensemble(self, X, y_outcome, y_points, sample_weights=None, feature_columns=None, epochs=150, batch_size=32, validation_split=0.2):
+    def train_ensemble(self, X, y_outcome, y_points, sample_weights=None, feature_columns=None, epochs=25, batch_size=32, validation_split=0.2):
         """
         Train multiple models with different random initializations.
         
@@ -799,7 +960,7 @@ def train_single_model():
     
     # Train model with temporal weighting
     print("\n3. Training deep neural network with temporal weighting...")
-    history = predictor.train(X_train, y_out_train, y_pts_train, sample_weights=weights_train, epochs=150)
+    history = predictor.train(X_train, y_out_train, y_pts_train, sample_weights=weights_train, epochs=50)
     
     # Evaluate
     print("\n4. Evaluating model on previous seasons...")
@@ -840,7 +1001,7 @@ def train_single_model():
     print("="*80)
 
 
-def train_ensemble_model(n_models=3):
+def train_ensemble_model(n_models=3, epochs=50):
     """Train an ensemble of NBA prediction models."""
     print("="*80)
     print("NBA GAME PREDICTION MODEL - ENSEMBLE")
@@ -869,7 +1030,7 @@ def train_ensemble_model(n_models=3):
     ensemble.train_ensemble(X_train, y_out_train, y_pts_train, 
                            sample_weights=weights_train,
                            feature_columns=base_predictor.feature_columns, 
-                           epochs=150)
+                           epochs=epochs)
     
     # Evaluate ensemble
     print("\n4. Evaluating ensemble on previous seasons...")

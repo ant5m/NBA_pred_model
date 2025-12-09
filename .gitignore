@@ -7,6 +7,8 @@
 __pycache__/
 *.py[cod]
 
+VISUALIZATIONS_GUIDE.md
+PROJECT_REPORT.md
 # Virtual environment
 venv/
 env/
@@ -15,10 +17,13 @@ env/
 # Saved models (don't commit trained models to git)
 nba_model_saved/
 ensemble_model_saved/
+calibration_saved/
+prediction_logs/
 
 # Log files
 *.log
 *.pid
+*.csv
 
 # macOS
 .DS_Store
