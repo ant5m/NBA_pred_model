@@ -71,10 +71,6 @@ export default function GameDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchBoxScore();
-  }, [gameId]);
-
   const fetchBoxScore = async () => {
     setLoading(true);
     setError(null);
@@ -96,6 +92,11 @@ export default function GameDetailPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchBoxScore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId]);
 
   const getPlayersByTeam = (teamAbbr: string) => {
     if (!boxScore) return [];

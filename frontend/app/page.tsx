@@ -23,7 +23,7 @@ export default function Home() {
             className="group bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all border-2 border-transparent hover:border-nba-blue"
           >
             <h2 className="text-2xl font-bold mb-3 group-hover:text-nba-blue transition-colors">
-              Today's Predictions
+              Today&apos;s Predictions
             </h2>
             <p className="text-gray-600 dark:text-gray-300">
               View predictions for upcoming games with win probabilities and
