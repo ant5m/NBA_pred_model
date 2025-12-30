@@ -34,7 +34,7 @@ case "$1" in
     
     log)
         echo "📝 Logging today's predictions..."
-        python3.11 log_predictions.py --ensemble --calibrated
+        python3.11 log_predictions.py --ensemble --calibrated --rosters
         ;;
     
     update)
@@ -60,13 +60,13 @@ case "$1" in
         ;;
     
     retrain)
-        echo "🔧 Retraining model (full - this will take ~30 minutes)..."
-        python3.11 retrain_and_calibrate.py
+        echo "🔧 Retraining model (full - this will take ~15 minutes)..."
+        python3.11 -c "from nba_model import train_ensemble_model; train_ensemble_model(n_models=5, epochs=100)"
         ;;
     
     retrain-quick)
         echo "⚡ Quick retrain (50 epochs - ~10 minutes)..."
-        python3.11 retrain_and_calibrate.py --quick
+        python3.11 -c "from nba_model import train_ensemble_model; train_ensemble_model(n_models=5, epochs=50)"
         ;;
     
     calibrate)

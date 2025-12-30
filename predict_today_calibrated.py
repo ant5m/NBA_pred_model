@@ -20,6 +20,18 @@ from nba_model import NBAGamePredictor, EnsembleNBAPredictor
 from nba_api.stats.endpoints import scoreboardv2
 from nba_api.stats.endpoints import boxscoretraditionalv3
 
+# NBA team mapping for when API doesn't provide team info
+NBA_TEAMS = {
+    1610612737: 'ATL', 1610612738: 'BOS', 1610612751: 'BKN', 1610612766: 'CHA',
+    1610612741: 'CHI', 1610612739: 'CLE', 1610612742: 'DAL', 1610612743: 'DEN',
+    1610612765: 'DET', 1610612744: 'GSW', 1610612745: 'HOU', 1610612754: 'IND',
+    1610612746: 'LAC', 1610612747: 'LAL', 1610612763: 'MEM', 1610612748: 'MIA',
+    1610612749: 'MIL', 1610612750: 'MIN', 1610612740: 'NOP', 1610612752: 'NYK',
+    1610612760: 'OKC', 1610612753: 'ORL', 1610612755: 'PHI', 1610612756: 'PHX',
+    1610612757: 'POR', 1610612758: 'SAC', 1610612759: 'SAS', 1610612761: 'TOR',
+    1610612762: 'UTA', 1610612764: 'WAS'
+}
+
 
 def load_calibration(path='calibration_saved/calibration.pkl'):
     """Load calibration model if available."""
@@ -159,31 +171,68 @@ def main():
         print("No games scheduled today")
         return
     
+    # Try to get team info from line_score first
+    line_score_df = board.line_score.get_data_frame()
+    
     games = []
     for _, game_row in game_header_df.iterrows():
-        games.append({
-            'gameId': game_row['GAME_ID'],
-            'homeTeam': {
-                'teamId': game_row['HOME_TEAM_ID'],
-                'teamTricode': None
-            },
-            'awayTeam': {
-                'teamId': game_row['VISITOR_TEAM_ID'],
-                'teamTricode': None
-            },
-            'gameStatus': game_row['GAME_STATUS_TEXT']
-        })
-    
-    # Get team abbreviations from database
-    conn = sqlite3.connect('nba_team_stats.db')
-    for game in games:
-        home_abbr = conn.execute("SELECT abbreviation FROM teams WHERE team_id = ?", 
-                                 (game['homeTeam']['teamId'],)).fetchone()
-        away_abbr = conn.execute("SELECT abbreviation FROM teams WHERE team_id = ?", 
-                                 (game['awayTeam']['teamId'],)).fetchone()
-        game['homeTeam']['teamTricode'] = home_abbr[0] if home_abbr else 'UNK'
-        game['awayTeam']['teamTricode'] = away_abbr[0] if away_abbr else 'UNK'
-    conn.close()
+        game_id = game_row['GAME_ID']
+        
+        # Try to get team IDs from line_score for this game (works if game started)
+        game_teams = line_score_df[line_score_df['GAME_ID'] == game_id]
+        
+        if len(game_teams) >= 2:
+            # Line score has both teams (game started)
+            home_team = game_teams.iloc[0]
+            away_team = game_teams.iloc[1]
+            
+            games.append({
+                'gameId': game_id,
+                'homeTeam': {
+                    'teamId': int(home_team['TEAM_ID']),
+                    'teamTricode': home_team['TEAM_ABBREVIATION']
+                },
+                'awayTeam': {
+                    'teamId': int(away_team['TEAM_ID']),
+                    'teamTricode': away_team['TEAM_ABBREVIATION']
+                },
+                'gameStatus': game_row['GAME_STATUS_TEXT']
+            })
+        else:
+            # Game hasn't started - try to get from boxscore
+            try:
+                time.sleep(0.6)  # Rate limit
+                boxscore = boxscoretraditionalv3.BoxScoreTraditionalV3(game_id=game_id)
+                team_stats = boxscore.team_stats.get_data_frame()
+                
+                if len(team_stats) >= 2:
+                    # Get home/away teams (need to determine which is which)
+                    team1_id = int(team_stats.iloc[0]['teamId'])
+                    team2_id = int(team_stats.iloc[1]['teamId'])
+                    team1_abbr = team_stats.iloc[0]['teamTricode']
+                    team2_abbr = team_stats.iloc[1]['teamTricode']
+                    
+                    # Boxscore doesn't always indicate home/away clearly
+                    # We'll use the first team as home by convention
+                    games.append({
+                        'gameId': game_id,
+                        'homeTeam': {
+                            'teamId': team1_id,
+                            'teamTricode': team1_abbr
+                        },
+                        'awayTeam': {
+                            'teamId': team2_id,
+                            'teamTricode': team2_abbr
+                        },
+                        'gameStatus': game_row['GAME_STATUS_TEXT']
+                    })
+                    continue
+            except:
+                pass
+            
+            # Last resort: skip this game
+            print(f"⚠️  Skipping game {game_id} - unable to determine teams")
+            print("    (NBA API no longer provides team IDs for future games)")
     
     print(f"Found {len(games)} games\n")
     print("="*80)

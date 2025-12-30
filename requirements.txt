@@ -1,6 +1,15 @@
 # Requirements for the NBA prediction project
 # Install into a virtual environment: python -m pip install -r requirements.txt
 
+# FastAPI & Web Server
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+python-multipart==0.0.6
+
+# Database
+psycopg2-binary==2.9.9
+
 # NBA API and data handling
 nba_api>=1.1.0
 pandas>=1.5.0
@@ -13,3 +22,11 @@ tensorflow>=2.13.0
 # For macOS Apple Silicon (M1/M2), use these instead of tensorflow:
 # tensorflow-macos>=2.13.0
 # tensorflow-metal>=1.0.0
+
+# Visualization
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# Utilities
+python-dotenv==1.0.0
+requests>=2.31.0

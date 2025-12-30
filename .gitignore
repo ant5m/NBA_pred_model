@@ -14,11 +14,6 @@ venv/
 env/
 .venv/
 
-# Saved models (don't commit trained models to git)
-nba_model_saved/
-ensemble_model_saved/
-calibration_saved/
-prediction_logs/
 
 # Log files
 *.log

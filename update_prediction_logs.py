@@ -81,6 +81,11 @@ def update_csv_file(csv_path):
         print(f"No data in {csv_path}")
         return
     
+    # Check if this CSV has game_id column (backfill files don't)
+    if 'game_id' not in fieldnames:
+        print(f"  Skipping - backfill file without game_id column (already has results)")
+        return
+    
     # Fetch live/finished game results
     print(f"Fetching live game scores...")
     all_results = get_game_results_from_live_api()

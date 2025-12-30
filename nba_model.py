@@ -4,8 +4,10 @@ Minimal, focused implementation of the NBAGamePredictor class.
 
 import os
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Suppress TensorFlow warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TensorFlow warnings
 
 import tensorflow as tf
+tf.get_logger().setLevel('ERROR')  # Only show errors, not warnings
 from tensorflow import keras
 from tensorflow.keras import layers, models
 import numpy as np
