@@ -41,11 +41,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",  # Local development
-        "http://localhost:5173",  # Vite dev server
-        "https://*.vercel.app",   # Vercel deployments
-        os.getenv("FRONTEND_URL", ""),  # Production frontend
-    ],
+        "http://localhost:3000",
+        "http://localhost:5173",
+        os.getenv("FRONTEND_URL", ""),
+    ] if os.getenv("FRONTEND_URL") else ["*"],  # Allow all origins if FRONTEND_URL not set
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
