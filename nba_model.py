@@ -72,14 +72,20 @@ class NBAGamePredictor:
             seasons = [seasons]
         
         # Get season averages (most recent season with data)
-        placeholders = ','.join(['?'] * len(seasons))
+        if USE_POSTGRES:
+            placeholders = ','.join(['%s'] * len(seasons))
+            param_placeholder = '%s'
+        else:
+            placeholders = ','.join(['?'] * len(seasons))
+            param_placeholder = '?'
+            
         query = f"""
             SELECT 
                 win_pct, points, field_goal_pct, three_point_pct, free_throw_pct,
                 total_rebounds, assists, steals, blocks, turnovers, personal_fouls,
                 offensive_rebounds, defensive_rebounds, plus_minus
             FROM season_stats
-            WHERE team_id = ? AND season IN ({placeholders})
+            WHERE team_id = {param_placeholder} AND season IN ({placeholders})
             ORDER BY season DESC
             LIMIT 1
         """
@@ -92,7 +98,7 @@ class NBAGamePredictor:
                 total_rebounds, assists, steals, blocks, turnovers,
                 plus_minus, win_loss
             FROM game_logs
-            WHERE team_id = ? AND season IN ({placeholders})
+            WHERE team_id = {param_placeholder} AND season IN ({placeholders})
             ORDER BY game_date DESC
             LIMIT 10
         """
@@ -155,22 +161,28 @@ class NBAGamePredictor:
     
     def get_top_players_features(self, team_abbr, seasons=['2022-23', '2023-24', '2024-25', '2025-26'], n_players=5):
         """Return aggregated stats for top N players."""
-        conn = sqlite3.connect(PLAYER_DB)
+        conn = get_player_stats_connection()
         
         # Handle single season string or list of seasons
         if isinstance(seasons, str):
             seasons = [seasons]
         
         # Get top players by minutes played (most recent season with data)
-        placeholders = ','.join(['?'] * len(seasons))
+        if USE_POSTGRES:
+            placeholders = ','.join(['%s'] * len(seasons))
+            param_placeholder = '%s'
+        else:
+            placeholders = ','.join(['?'] * len(seasons))
+            param_placeholder = '?'
+            
         query = f"""
             SELECT 
                 points, assists, total_rebounds, steals, blocks, turnovers,
                 field_goal_pct, three_point_pct, free_throw_pct, minutes_played
             FROM season_stats
-            WHERE team_abbreviation = ? AND season IN ({placeholders})
+            WHERE team_abbreviation = {param_placeholder} AND season IN ({placeholders})
             ORDER BY season DESC, minutes_played DESC
-            LIMIT ?
+            LIMIT {param_placeholder}
         """
         players_df = pd.read_sql_query(query, conn, params=(team_abbr, *seasons, n_players))
         conn.close()
