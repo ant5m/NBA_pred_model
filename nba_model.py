@@ -18,9 +18,38 @@ from sklearn.preprocessing import StandardScaler
 from datetime import datetime, timedelta
 import pickle
 
-# Database paths
+# Database configuration
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+# Determine which database to use
+if DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://"):
+    USE_POSTGRES = True
+    import psycopg2
+    # Railway uses postgres://, but psycopg2 needs postgresql://
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+else:
+    USE_POSTGRES = False
+
+# Database paths (for SQLite)
 TEAM_DB = 'nba_team_stats.db'
 PLAYER_DB = 'nba_player_stats.db'
+
+
+def get_team_stats_connection():
+    """Get connection to team stats database."""
+    if USE_POSTGRES:
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        return sqlite3.connect(TEAM_DB)
+
+
+def get_player_stats_connection():
+    """Get connection to player stats database."""
+    if USE_POSTGRES:
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        return sqlite3.connect(PLAYER_DB)
 
 
 class NBAGamePredictor:
@@ -36,7 +65,7 @@ class NBAGamePredictor:
     
     def get_team_features(self, team_id, seasons=['2022-23', '2023-24', '2024-25', '2025-26'], as_of_date=None):
         """Return season + recent averages for a team."""
-        conn = sqlite3.connect(TEAM_DB)
+        conn = get_team_stats_connection()
         
         # Handle single season string or list of seasons
         if isinstance(seasons, str):
@@ -178,8 +207,11 @@ class NBAGamePredictor:
     
     def get_team_abbreviation(self, team_id):
         """Lookup team abbreviation from `teams` table."""
-        conn = sqlite3.connect(TEAM_DB)
-        query = "SELECT abbreviation FROM teams WHERE team_id = ?"
+        conn = get_team_stats_connection()
+        if USE_POSTGRES:
+            query = "SELECT abbreviation FROM teams WHERE team_id = %s"
+        else:
+            query = "SELECT abbreviation FROM teams WHERE team_id = ?"
         result = pd.read_sql_query(query, conn, params=(team_id,))
         conn.close()
         
@@ -247,7 +279,7 @@ class NBAGamePredictor:
     
     def create_training_data(self, seasons=['2022-23', '2023-24', '2024-25', '2025-26'], min_games=10):
         """Build X, y arrays from `game_logs` for a season."""
-        conn = sqlite3.connect(TEAM_DB)
+        conn = get_team_stats_connection()
         
         # Handle single season string or list of seasons
         if isinstance(seasons, str):
