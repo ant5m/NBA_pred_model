@@ -11,6 +11,7 @@ Run:
   python3 build_player_stats_db.py --update     # Update with latest games
 """
 
+import os
 import sqlite3
 import argparse
 from datetime import datetime
@@ -19,10 +20,30 @@ from nba_api.stats.static import players
 import pandas as pd
 import time
 
-DB_PATH = 'nba_player_stats.db'
+# Database configuration
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+# Determine which database to use
+if DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://"):
+    USE_POSTGRES = True
+    import psycopg2
+    # Railway uses postgres://, but psycopg2 needs postgresql://
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+else:
+    USE_POSTGRES = False
+    DB_PATH = 'nba_player_stats.db'
 
 # Seasons to include (last 3 + current)
 SEASONS = ['2023-24', '2024-25', '2025-26']
+
+
+def get_connection():
+    """Get database connection (PostgreSQL or SQLite)."""
+    if USE_POSTGRES:
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        return sqlite3.connect(DB_PATH)
 CURRENT_SEASON = '2025-26'
 
 
@@ -130,12 +151,26 @@ def update_player_info(conn, player_list):
     now = datetime.now()
     
     for player in player_list:
-        cursor.execute('''
-            INSERT OR REPLACE INTO players 
-            (player_id, full_name, first_name, last_name, is_active, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (player['id'], player['full_name'], player['first_name'], 
-              player['last_name'], player['is_active'], now))
+        if USE_POSTGRES:
+            cursor.execute('''
+                INSERT INTO players 
+                (player_id, full_name, first_name, last_name, is_active, last_updated)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (player_id) DO UPDATE SET
+                    full_name = EXCLUDED.full_name,
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name,
+                    is_active = EXCLUDED.is_active,
+                    last_updated = EXCLUDED.last_updated
+            ''', (player['id'], player['full_name'], player['first_name'], 
+                  player['last_name'], player['is_active'], now))
+        else:
+            cursor.execute('''
+                INSERT OR REPLACE INTO players 
+                (player_id, full_name, first_name, last_name, is_active, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (player['id'], player['full_name'], player['first_name'], 
+                  player['last_name'], player['is_active'], now))
     
     conn.commit()
     print(f"✓ Updated {len(player_list)} player records")
@@ -172,28 +207,78 @@ def update_season_stats(conn, seasons=SEASONS):
             continue
         
         for _, row in df.iterrows():
-            cursor.execute('''
-                INSERT OR REPLACE INTO season_stats
-                (player_id, player_name, season, team_abbreviation, age,
-                 games_played, games_started, minutes_played,
-                 field_goals_made, field_goals_attempted, field_goal_pct,
-                 three_pointers_made, three_pointers_attempted, three_point_pct,
-                 free_throws_made, free_throws_attempted, free_throw_pct,
-                 offensive_rebounds, defensive_rebounds, total_rebounds,
-                 assists, steals, blocks, turnovers, personal_fouls, points,
-                 last_updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                row['PLAYER_ID'], row['PLAYER_NAME'], season, row['TEAM_ABBREVIATION'],
-                row.get('AGE'),
-                row['GP'], row.get('GS', 0), row['MIN'],
-                row['FGM'], row['FGA'], row['FG_PCT'],
-                row['FG3M'], row['FG3A'], row['FG3_PCT'],
-                row['FTM'], row['FTA'], row['FT_PCT'],
-                row['OREB'], row['DREB'], row['REB'],
-                row['AST'], row['STL'], row['BLK'], row['TOV'], row['PF'], row['PTS'],
-                now
-            ))
+            if USE_POSTGRES:
+                cursor.execute('''
+                    INSERT INTO season_stats
+                    (player_id, player_name, season, team_abbreviation, age,
+                     games_played, games_started, minutes_played,
+                     field_goals_made, field_goals_attempted, field_goal_pct,
+                     three_pointers_made, three_pointers_attempted, three_point_pct,
+                     free_throws_made, free_throws_attempted, free_throw_pct,
+                     offensive_rebounds, defensive_rebounds, total_rebounds,
+                     assists, steals, blocks, turnovers, personal_fouls, points,
+                     last_updated)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (player_id, season) DO UPDATE SET
+                        player_name = EXCLUDED.player_name,
+                        team_abbreviation = EXCLUDED.team_abbreviation,
+                        age = EXCLUDED.age,
+                        games_played = EXCLUDED.games_played,
+                        games_started = EXCLUDED.games_started,
+                        minutes_played = EXCLUDED.minutes_played,
+                        field_goals_made = EXCLUDED.field_goals_made,
+                        field_goals_attempted = EXCLUDED.field_goals_attempted,
+                        field_goal_pct = EXCLUDED.field_goal_pct,
+                        three_pointers_made = EXCLUDED.three_pointers_made,
+                        three_pointers_attempted = EXCLUDED.three_pointers_attempted,
+                        three_point_pct = EXCLUDED.three_point_pct,
+                        free_throws_made = EXCLUDED.free_throws_made,
+                        free_throws_attempted = EXCLUDED.free_throws_attempted,
+                        free_throw_pct = EXCLUDED.free_throw_pct,
+                        offensive_rebounds = EXCLUDED.offensive_rebounds,
+                        defensive_rebounds = EXCLUDED.defensive_rebounds,
+                        total_rebounds = EXCLUDED.total_rebounds,
+                        assists = EXCLUDED.assists,
+                        steals = EXCLUDED.steals,
+                        blocks = EXCLUDED.blocks,
+                        turnovers = EXCLUDED.turnovers,
+                        personal_fouls = EXCLUDED.personal_fouls,
+                        points = EXCLUDED.points,
+                        last_updated = EXCLUDED.last_updated
+                ''', (
+                    row['PLAYER_ID'], row['PLAYER_NAME'], season, row['TEAM_ABBREVIATION'],
+                    row.get('AGE'),
+                    row['GP'], row.get('GS', 0), row['MIN'],
+                    row['FGM'], row['FGA'], row['FG_PCT'],
+                    row['FG3M'], row['FG3A'], row['FG3_PCT'],
+                    row['FTM'], row['FTA'], row['FT_PCT'],
+                    row['OREB'], row['DREB'], row['REB'],
+                    row['AST'], row['STL'], row['BLK'], row['TOV'], row['PF'], row['PTS'],
+                    now
+                ))
+            else:
+                cursor.execute('''
+                    INSERT OR REPLACE INTO season_stats
+                    (player_id, player_name, season, team_abbreviation, age,
+                     games_played, games_started, minutes_played,
+                     field_goals_made, field_goals_attempted, field_goal_pct,
+                     three_pointers_made, three_pointers_attempted, three_point_pct,
+                     free_throws_made, free_throws_attempted, free_throw_pct,
+                     offensive_rebounds, defensive_rebounds, total_rebounds,
+                     assists, steals, blocks, turnovers, personal_fouls, points,
+                     last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    row['PLAYER_ID'], row['PLAYER_NAME'], season, row['TEAM_ABBREVIATION'],
+                    row.get('AGE'),
+                    row['GP'], row.get('GS', 0), row['MIN'],
+                    row['FGM'], row['FGA'], row['FG_PCT'],
+                    row['FG3M'], row['FG3A'], row['FG3_PCT'],
+                    row['FTM'], row['FTA'], row['FT_PCT'],
+                    row['OREB'], row['DREB'], row['REB'],
+                    row['AST'], row['STL'], row['BLK'], row['TOV'], row['PF'], row['PTS'],
+                    now
+                ))
         
         total_records += len(df)
         conn.commit()
@@ -230,19 +315,71 @@ def update_current_season_game_logs(conn, player_list=None, limit=None):
             
             if len(df) > 0:
                 for _, game in df.iterrows():
-                    cursor.execute('''
-                        INSERT OR REPLACE INTO game_logs
-                        (player_id, player_name, season, game_id, game_date, matchup, wl,
-                         minutes, fgm, fga, fg_pct, fg3m, fg3a, fg3_pct,
-                         ftm, fta, ft_pct, oreb, dreb, reb, ast, stl, blk, tov, pf, pts,
-                         plus_minus, last_updated)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        player['id'], player['full_name'], CURRENT_SEASON,
-                        game['Game_ID'], game['GAME_DATE'], game['MATCHUP'], game['WL'],
-                        game.get('MIN'), game['FGM'], game['FGA'], game['FG_PCT'],
-                        game['FG3M'], game['FG3A'], game['FG3_PCT'],
-                        game['FTM'], game['FTA'], game['FT_PCT'],
+                    if USE_POSTGRES:
+                        cursor.execute('''
+                            INSERT INTO game_logs
+                            (player_id, player_name, season, game_id, game_date, matchup, wl,
+                             minutes, fgm, fga, fg_pct, fg3m, fg3a, fg3_pct,
+                             ftm, fta, ft_pct, oreb, dreb, reb, ast, stl, blk, tov, pf, pts,
+                             plus_minus, last_updated)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (player_id, game_id) DO UPDATE SET
+                                player_name = EXCLUDED.player_name,
+                                season = EXCLUDED.season,
+                                game_date = EXCLUDED.game_date,
+                                matchup = EXCLUDED.matchup,
+                                wl = EXCLUDED.wl,
+                                minutes = EXCLUDED.minutes,
+                                fgm = EXCLUDED.fgm,
+                                fga = EXCLUDED.fga,
+                                fg_pct = EXCLUDED.fg_pct,
+                                fg3m = EXCLUDED.fg3m,
+                                fg3a = EXCLUDED.fg3a,
+                                fg3_pct = EXCLUDED.fg3_pct,
+                                ftm = EXCLUDED.ftm,
+                                fta = EXCLUDED.fta,
+                                ft_pct = EXCLUDED.ft_pct,
+                                oreb = EXCLUDED.oreb,
+                                dreb = EXCLUDED.dreb,
+                                reb = EXCLUDED.reb,
+                                ast = EXCLUDED.ast,
+                                stl = EXCLUDED.stl,
+                                blk = EXCLUDED.blk,
+                                tov = EXCLUDED.tov,
+                                pf = EXCLUDED.pf,
+                                pts = EXCLUDED.pts,
+                                plus_minus = EXCLUDED.plus_minus,
+                                last_updated = EXCLUDED.last_updated
+                        ''', (
+                            player['id'], player['full_name'], CURRENT_SEASON,
+                            game['Game_ID'], game['GAME_DATE'], game['MATCHUP'], game['WL'],
+                            game.get('MIN'), game['FGM'], game['FGA'], game['FG_PCT'],
+                            game['FG3M'], game['FG3A'], game['FG3_PCT'],
+                            game['FTM'], game['FTA'], game['FT_PCT'],
+                            game['OREB'], game['DREB'], game['REB'],
+                            game['AST'], game['STL'], game['BLK'], game['TOV'], game['PF'], game['PTS'],
+                            game.get('PLUS_MINUS'),
+                            now
+                        ))
+                    else:
+                        cursor.execute('''
+                            INSERT OR REPLACE INTO game_logs
+                            (player_id, player_name, season, game_id, game_date, matchup, wl,
+                             minutes, fgm, fga, fg_pct, fg3m, fg3a, fg3_pct,
+                             ftm, fta, ft_pct, oreb, dreb, reb, ast, stl, blk, tov, pf, pts,
+                             plus_minus, last_updated)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            player['id'], player['full_name'], CURRENT_SEASON,
+                            game['Game_ID'], game['GAME_DATE'], game['MATCHUP'], game['WL'],
+                            game.get('MIN'), game['FGM'], game['FGA'], game['FG_PCT'],
+                            game['FG3M'], game['FG3A'], game['FG3_PCT'],
+                            game['FTM'], game['FTA'], game['FT_PCT'],
+                            game['OREB'], game['DREB'], game['REB'],
+                            game['AST'], game['STL'], game['BLK'], game['TOV'], game['PF'], game['PTS'],
+                            game.get('PLUS_MINUS'),
+                            now
+                        ))
                         game['OREB'], game['DREB'], game['REB'],
                         game['AST'], game['STL'], game['BLK'], game['TOV'], game['PF'], game['PTS'],
                         game['PLUS_MINUS'], now
