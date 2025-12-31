@@ -528,7 +528,7 @@ def update_database():
 
 def show_stats():
     """Show database statistics."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cursor = conn.cursor()
     
     print("\n" + "="*80)
