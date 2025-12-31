@@ -482,6 +482,22 @@ def update_current_season_game_logs(conn, player_list=None, limit=None):
 
 
 def initial_build(limit_players=None):
+    """Perform initial database build."""
+    print("=" * 60)
+    print("INITIAL BUILD - NBA Player Stats Database")
+    print("=" * 60)
+    
+    # Step 0: Force drop all tables if PostgreSQL
+    if USE_POSTGRES:
+        print("FORCING CLEAN REBUILD - Dropping all existing tables...")
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DROP TABLE IF EXISTS game_logs CASCADE')
+        cursor.execute('DROP TABLE IF EXISTS season_stats CASCADE')
+        cursor.execute('DROP TABLE IF EXISTS players CASCADE')
+        conn.commit()
+        conn.close()
+        print("✓ All tables dropped - starting fresh")
     
     conn = get_connection()
     
