@@ -387,18 +387,62 @@ def update_current_season_game_logs(limit=None):
                     'plus_minus': df.get('PLUS_MINUS', 0)  # Use get() with default
                 })
                 
-                # Insert/replace records
-                games_df.to_sql('game_logs', conn, if_exists='append', index=False)
-                
-                # Remove duplicates (different approach for PostgreSQL vs SQLite)
+                # Insert game logs
                 if USE_POSTGRES:
-                    cursor.execute('''
-                        DELETE FROM game_logs a USING game_logs b
-                        WHERE a.ctid < b.ctid 
-                        AND a.game_id = b.game_id 
-                        AND a.team_id = b.team_id
-                    ''')
+                    # Manually insert for PostgreSQL
+                    for _, game in games_df.iterrows():
+                        cursor.execute('''
+                            INSERT INTO game_logs
+                            (game_id, team_id, season, game_date, matchup, win_loss,
+                             minutes, points, field_goals_made, field_goals_attempted,
+                             field_goal_pct, three_pointers_made, three_pointers_attempted,
+                             three_point_pct, free_throws_made, free_throws_attempted,
+                             free_throw_pct, offensive_rebounds, defensive_rebounds,
+                             total_rebounds, assists, turnovers, steals, blocks,
+                             personal_fouls, plus_minus)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (game_id, team_id) DO UPDATE SET
+                                game_date = EXCLUDED.game_date,
+                                matchup = EXCLUDED.matchup,
+                                win_loss = EXCLUDED.win_loss,
+                                minutes = EXCLUDED.minutes,
+                                points = EXCLUDED.points,
+                                field_goals_made = EXCLUDED.field_goals_made,
+                                field_goals_attempted = EXCLUDED.field_goals_attempted,
+                                field_goal_pct = EXCLUDED.field_goal_pct,
+                                three_pointers_made = EXCLUDED.three_pointers_made,
+                                three_pointers_attempted = EXCLUDED.three_pointers_attempted,
+                                three_point_pct = EXCLUDED.three_point_pct,
+                                free_throws_made = EXCLUDED.free_throws_made,
+                                free_throws_attempted = EXCLUDED.free_throws_attempted,
+                                free_throw_pct = EXCLUDED.free_throw_pct,
+                                offensive_rebounds = EXCLUDED.offensive_rebounds,
+                                defensive_rebounds = EXCLUDED.defensive_rebounds,
+                                total_rebounds = EXCLUDED.total_rebounds,
+                                assists = EXCLUDED.assists,
+                                turnovers = EXCLUDED.turnovers,
+                                steals = EXCLUDED.steals,
+                                blocks = EXCLUDED.blocks,
+                                personal_fouls = EXCLUDED.personal_fouls,
+                                plus_minus = EXCLUDED.plus_minus
+                        ''', (
+                            game['game_id'], game['team_id'], game['season'],
+                            game['game_date'], game['matchup'], game['win_loss'],
+                            game['minutes'], game['points'], game['field_goals_made'],
+                            game['field_goals_attempted'], game['field_goal_pct'],
+                            game['three_pointers_made'], game['three_pointers_attempted'],
+                            game['three_point_pct'], game['free_throws_made'],
+                            game['free_throws_attempted'], game['free_throw_pct'],
+                            game['offensive_rebounds'], game['defensive_rebounds'],
+                            game['total_rebounds'], game['assists'], game['turnovers'],
+                            game['steals'], game['blocks'], game['personal_fouls'],
+                            game['plus_minus']
+                        ))
                 else:
+                    # Use pandas for SQLite
+                    games_df.to_sql('game_logs', conn, if_exists='append', index=False)
+                    
+                    # Remove duplicates for SQLite
                     cursor.execute('''
                         DELETE FROM game_logs
                         WHERE rowid NOT IN (
@@ -407,6 +451,8 @@ def update_current_season_game_logs(limit=None):
                             GROUP BY game_id, team_id
                         )
                     ''')
+                
+                conn.commit()
                 conn.commit()
                 
                 total_games += len(games_df)
@@ -500,11 +546,18 @@ def show_stats():
     print(f"\nGame logs: {game_count} total games")
     
     # Current season game count
-    cursor.execute("""
-        SELECT COUNT(DISTINCT game_id) as games
-        FROM game_logs
-        WHERE season = ?
-    """, (CURRENT_SEASON,))
+    if USE_POSTGRES:
+        cursor.execute("""
+            SELECT COUNT(DISTINCT game_id) as games
+            FROM game_logs
+            WHERE season = %s
+        """, (CURRENT_SEASON,))
+    else:
+        cursor.execute("""
+            SELECT COUNT(DISTINCT game_id) as games
+            FROM game_logs
+            WHERE season = ?
+        """, (CURRENT_SEASON,))
     current_games = cursor.fetchone()[0]
     print(f"  {CURRENT_SEASON} season: {current_games} games logged")
     
