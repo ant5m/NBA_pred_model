@@ -9,6 +9,7 @@ Usage:
     python3 build_team_stats_db.py --stats    # Show database stats
 """
 
+import os
 import sqlite3
 import pandas as pd
 import time
@@ -16,14 +17,39 @@ import argparse
 from nba_api.stats.endpoints import leaguedashteamstats, teamgamelog
 from nba_api.stats.static import teams
 
+# Database configuration
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///nba_team_stats.db")
+
+# Parse database URL
+if DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://"):
+    USE_POSTGRES = True
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    # Railway uses postgres://, but psycopg2 needs postgresql://
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+else:
+    USE_POSTGRES = False
+    # Extract SQLite path
+    if DATABASE_URL.startswith("sqlite:///"):
+        DB_NAME = DATABASE_URL.replace("sqlite:///", "")
+    else:
+        DB_NAME = "nba_team_stats.db"
+
 # Configuration
-DB_NAME = 'nba_team_stats.db'
 SEASONS = ['2022-23', '2023-24', '2024-25', '2025-26']
 CURRENT_SEASON = '2025-26'
 
+def get_connection():
+    """Get database connection."""
+    if USE_POSTGRES:
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        return sqlite3.connect(DB_NAME)
+
 def create_tables():
     """Create database tables if they don't exist."""
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
     
     # Teams table
@@ -109,7 +135,8 @@ def create_tables():
     
     conn.commit()
     conn.close()
-    print(f"✓ Database tables created/verified in {DB_NAME}")
+    db_type = "PostgreSQL" if USE_POSTGRES else f"{DB_NAME}"
+    print(f"✓ Database tables created/verified in {db_type}")
 
 def get_all_teams():
     """Get all NBA teams."""
@@ -119,7 +146,7 @@ def get_all_teams():
 
 def update_team_info(all_teams):
     """Insert or update team information."""
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
     
     for team in all_teams:
@@ -162,7 +189,7 @@ def update_season_stats(seasons=None):
     if seasons is None:
         seasons = SEASONS
     
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
     
     total_records = 0
@@ -237,7 +264,7 @@ def update_current_season_game_logs(limit=None):
     """Fetch game logs for all teams in current season."""
     print(f"\nFetching game logs for {CURRENT_SEASON}...")
     
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
     
     # Get all team IDs
@@ -359,7 +386,7 @@ def update_database():
 
 def show_stats():
     """Display database statistics."""
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
     
     print("\n" + "=" * 60)
