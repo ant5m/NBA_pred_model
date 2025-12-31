@@ -64,78 +64,152 @@ def create_tables(conn):
     ''')
     
     # Season stats table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS season_stats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            player_id INTEGER,
-            player_name TEXT,
-            season TEXT,
-            team_abbreviation TEXT,
-            age INTEGER,
-            games_played INTEGER,
-            games_started INTEGER,
-            minutes_played REAL,
-            field_goals_made REAL,
-            field_goals_attempted REAL,
-            field_goal_pct REAL,
-            three_pointers_made REAL,
-            three_pointers_attempted REAL,
-            three_point_pct REAL,
-            free_throws_made REAL,
-            free_throws_attempted REAL,
-            free_throw_pct REAL,
-            offensive_rebounds REAL,
-            defensive_rebounds REAL,
-            total_rebounds REAL,
-            assists REAL,
-            steals REAL,
-            blocks REAL,
-            turnovers REAL,
-            personal_fouls REAL,
-            points REAL,
-            last_updated TIMESTAMP,
-            UNIQUE(player_id, season, team_abbreviation)
-        )
-    ''')
+    if USE_POSTGRES:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS season_stats (
+                id SERIAL PRIMARY KEY,
+                player_id INTEGER,
+                player_name TEXT,
+                season TEXT,
+                team_abbreviation TEXT,
+                age INTEGER,
+                games_played INTEGER,
+                games_started INTEGER,
+                minutes_played REAL,
+                field_goals_made REAL,
+                field_goals_attempted REAL,
+                field_goal_pct REAL,
+                three_pointers_made REAL,
+                three_pointers_attempted REAL,
+                three_point_pct REAL,
+                free_throws_made REAL,
+                free_throws_attempted REAL,
+                free_throw_pct REAL,
+                offensive_rebounds REAL,
+                defensive_rebounds REAL,
+                total_rebounds REAL,
+                assists REAL,
+                steals REAL,
+                blocks REAL,
+                turnovers REAL,
+                personal_fouls REAL,
+                points REAL,
+                last_updated TIMESTAMP,
+                UNIQUE(player_id, season)
+            )
+        ''')
+    else:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS season_stats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_id INTEGER,
+                player_name TEXT,
+                season TEXT,
+                team_abbreviation TEXT,
+                age INTEGER,
+                games_played INTEGER,
+                games_started INTEGER,
+                minutes_played REAL,
+                field_goals_made REAL,
+                field_goals_attempted REAL,
+                field_goal_pct REAL,
+                three_pointers_made REAL,
+                three_pointers_attempted REAL,
+                three_point_pct REAL,
+                free_throws_made REAL,
+                free_throws_attempted REAL,
+                free_throw_pct REAL,
+                offensive_rebounds REAL,
+                defensive_rebounds REAL,
+                total_rebounds REAL,
+                assists REAL,
+                steals REAL,
+                blocks REAL,
+                turnovers REAL,
+                personal_fouls REAL,
+                points REAL,
+                last_updated TIMESTAMP,
+                UNIQUE(player_id, season, team_abbreviation)
+            )
+        ''')
     
     # Game log table (detailed game-by-game for current season)
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS game_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            player_id INTEGER,
-            player_name TEXT,
-            season TEXT,
-            game_id TEXT,
-            game_date DATE,
-            matchup TEXT,
-            wl TEXT,
-            minutes INTEGER,
-            fgm INTEGER,
-            fga INTEGER,
-            fg_pct REAL,
-            fg3m INTEGER,
-            fg3a INTEGER,
-            fg3_pct REAL,
-            ftm INTEGER,
-            fta INTEGER,
-            ft_pct REAL,
-            oreb INTEGER,
-            dreb INTEGER,
-            reb INTEGER,
-            ast INTEGER,
-            stl INTEGER,
-            blk INTEGER,
-            tov INTEGER,
-            pf INTEGER,
-            pts INTEGER,
-            plus_minus INTEGER,
-            last_updated TIMESTAMP,
-            UNIQUE(player_id, game_id)
-        )
-    ''')
+    if USE_POSTGRES:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS game_logs (
+                id SERIAL PRIMARY KEY,
+                player_id INTEGER,
+                player_name TEXT,
+                season TEXT,
+                game_id TEXT,
+                game_date DATE,
+                matchup TEXT,
+                wl TEXT,
+                minutes INTEGER,
+                fgm INTEGER,
+                fga INTEGER,
+                fg_pct REAL,
+                fg3m INTEGER,
+                fg3a INTEGER,
+                fg3_pct REAL,
+                ftm INTEGER,
+                fta INTEGER,
+                ft_pct REAL,
+                oreb INTEGER,
+                dreb INTEGER,
+                reb INTEGER,
+                ast INTEGER,
+                stl INTEGER,
+                blk INTEGER,
+                tov INTEGER,
+                pf INTEGER,
+                pts INTEGER,
+                plus_minus INTEGER,
+                last_updated TIMESTAMP,
+                UNIQUE(player_id, game_id)
+            )
+        ''')
+    else:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS game_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_id INTEGER,
+                player_name TEXT,
+                season TEXT,
+                game_id TEXT,
+                game_date DATE,
+                matchup TEXT,
+                wl TEXT,
+                minutes INTEGER,
+                fgm INTEGER,
+                fga INTEGER,
+                fg_pct REAL,
+                fg3m INTEGER,
+                fg3a INTEGER,
+                fg3_pct REAL,
+                ftm INTEGER,
+                fta INTEGER,
+                ft_pct REAL,
+                oreb INTEGER,
+                dreb INTEGER,
+                reb INTEGER,
+                ast INTEGER,
+                stl INTEGER,
+                blk INTEGER,
+                tov INTEGER,
+                pf INTEGER,
+                pts INTEGER,
+                plus_minus INTEGER,
+                last_updated TIMESTAMP,
+                UNIQUE(player_id, game_id)
+            )
+        ''')
     
     conn.commit()
-    print("✓ Database tables created/verified")
+    if USE_POSTGRES:
+        print("✓ Database tables created/verified in PostgreSQL")
+    else:
+        print("✓ Database tables created/verified")
 
 
 def get_all_active_players():
