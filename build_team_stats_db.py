@@ -150,19 +150,41 @@ def update_team_info(all_teams):
     cursor = conn.cursor()
     
     for team in all_teams:
-        cursor.execute('''
-            INSERT OR REPLACE INTO teams 
-            (team_id, full_name, abbreviation, nickname, city, state, year_founded)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            team['id'],
-            team['full_name'],
-            team['abbreviation'],
-            team['nickname'],
-            team['city'],
-            team['state'],
-            team['year_founded']
-        ))
+        if USE_POSTGRES:
+            cursor.execute('''
+                INSERT INTO teams 
+                (team_id, full_name, abbreviation, nickname, city, state, year_founded)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (team_id) DO UPDATE SET
+                    full_name = EXCLUDED.full_name,
+                    abbreviation = EXCLUDED.abbreviation,
+                    nickname = EXCLUDED.nickname,
+                    city = EXCLUDED.city,
+                    state = EXCLUDED.state,
+                    year_founded = EXCLUDED.year_founded
+            ''', (
+                team['id'],
+                team['full_name'],
+                team['abbreviation'],
+                team['nickname'],
+                team['city'],
+                team['state'],
+                team['year_founded']
+            ))
+        else:
+            cursor.execute('''
+                INSERT OR REPLACE INTO teams 
+                (team_id, full_name, abbreviation, nickname, city, state, year_founded)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                team['id'],
+                team['full_name'],
+                team['abbreviation'],
+                team['nickname'],
+                team['city'],
+                team['state'],
+                team['year_founded']
+            ))
     
     conn.commit()
     conn.close()
@@ -227,31 +249,81 @@ def update_season_stats(seasons=None):
                 'plus_minus': df['PLUS_MINUS']
             })
             
-            # Use INSERT OR REPLACE for updates
+            # Insert or update season stats
             for _, row in stats_df.iterrows():
-                cursor.execute('''
-                    INSERT OR REPLACE INTO season_stats
-                    (team_id, season, games_played, wins, losses, win_pct,
-                     minutes_played, points, field_goals_made, field_goals_attempted,
-                     field_goal_pct, three_pointers_made, three_pointers_attempted,
-                     three_point_pct, free_throws_made, free_throws_attempted,
-                     free_throw_pct, offensive_rebounds, defensive_rebounds,
-                     total_rebounds, assists, turnovers, steals, blocks,
-                     personal_fouls, plus_minus)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    row['team_id'], row['season'], row['games_played'],
-                    row['wins'], row['losses'], row['win_pct'],
-                    row['minutes_played'], row['points'],
-                    row['field_goals_made'], row['field_goals_attempted'],
-                    row['field_goal_pct'], row['three_pointers_made'],
-                    row['three_pointers_attempted'], row['three_point_pct'],
-                    row['free_throws_made'], row['free_throws_attempted'],
-                    row['free_throw_pct'], row['offensive_rebounds'],
-                    row['defensive_rebounds'], row['total_rebounds'],
-                    row['assists'], row['turnovers'], row['steals'],
-                    row['blocks'], row['personal_fouls'], row['plus_minus']
-                ))
+                if USE_POSTGRES:
+                    cursor.execute('''
+                        INSERT INTO season_stats
+                        (team_id, season, games_played, wins, losses, win_pct,
+                         minutes_played, points, field_goals_made, field_goals_attempted,
+                         field_goal_pct, three_pointers_made, three_pointers_attempted,
+                         three_point_pct, free_throws_made, free_throws_attempted,
+                         free_throw_pct, offensive_rebounds, defensive_rebounds,
+                         total_rebounds, assists, turnovers, steals, blocks,
+                         personal_fouls, plus_minus)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (team_id, season) DO UPDATE SET
+                            games_played = EXCLUDED.games_played,
+                            wins = EXCLUDED.wins,
+                            losses = EXCLUDED.losses,
+                            win_pct = EXCLUDED.win_pct,
+                            minutes_played = EXCLUDED.minutes_played,
+                            points = EXCLUDED.points,
+                            field_goals_made = EXCLUDED.field_goals_made,
+                            field_goals_attempted = EXCLUDED.field_goals_attempted,
+                            field_goal_pct = EXCLUDED.field_goal_pct,
+                            three_pointers_made = EXCLUDED.three_pointers_made,
+                            three_pointers_attempted = EXCLUDED.three_pointers_attempted,
+                            three_point_pct = EXCLUDED.three_point_pct,
+                            free_throws_made = EXCLUDED.free_throws_made,
+                            free_throws_attempted = EXCLUDED.free_throws_attempted,
+                            free_throw_pct = EXCLUDED.free_throw_pct,
+                            offensive_rebounds = EXCLUDED.offensive_rebounds,
+                            defensive_rebounds = EXCLUDED.defensive_rebounds,
+                            total_rebounds = EXCLUDED.total_rebounds,
+                            assists = EXCLUDED.assists,
+                            turnovers = EXCLUDED.turnovers,
+                            steals = EXCLUDED.steals,
+                            blocks = EXCLUDED.blocks,
+                            personal_fouls = EXCLUDED.personal_fouls,
+                            plus_minus = EXCLUDED.plus_minus
+                    ''', (
+                        row['team_id'], row['season'], row['games_played'],
+                        row['wins'], row['losses'], row['win_pct'],
+                        row['minutes_played'], row['points'],
+                        row['field_goals_made'], row['field_goals_attempted'],
+                        row['field_goal_pct'], row['three_pointers_made'],
+                        row['three_pointers_attempted'], row['three_point_pct'],
+                        row['free_throws_made'], row['free_throws_attempted'],
+                        row['free_throw_pct'], row['offensive_rebounds'],
+                        row['defensive_rebounds'], row['total_rebounds'],
+                        row['assists'], row['turnovers'], row['steals'],
+                        row['blocks'], row['personal_fouls'], row['plus_minus']
+                    ))
+                else:
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO season_stats
+                        (team_id, season, games_played, wins, losses, win_pct,
+                         minutes_played, points, field_goals_made, field_goals_attempted,
+                         field_goal_pct, three_pointers_made, three_pointers_attempted,
+                         three_point_pct, free_throws_made, free_throws_attempted,
+                         free_throw_pct, offensive_rebounds, defensive_rebounds,
+                         total_rebounds, assists, turnovers, steals, blocks,
+                         personal_fouls, plus_minus)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        row['team_id'], row['season'], row['games_played'],
+                        row['wins'], row['losses'], row['win_pct'],
+                        row['minutes_played'], row['points'],
+                        row['field_goals_made'], row['field_goals_attempted'],
+                        row['field_goal_pct'], row['three_pointers_made'],
+                        row['three_pointers_attempted'], row['three_point_pct'],
+                        row['free_throws_made'], row['free_throws_attempted'],
+                        row['free_throw_pct'], row['offensive_rebounds'],
+                        row['defensive_rebounds'], row['total_rebounds'],
+                        row['assists'], row['turnovers'], row['steals'],
+                        row['blocks'], row['personal_fouls'], row['plus_minus']
+                    ))
             
             conn.commit()
             total_records += len(stats_df)
@@ -318,15 +390,23 @@ def update_current_season_game_logs(limit=None):
                 # Insert/replace records
                 games_df.to_sql('game_logs', conn, if_exists='append', index=False)
                 
-                # Remove duplicates
-                cursor.execute('''
-                    DELETE FROM game_logs
-                    WHERE rowid NOT IN (
-                        SELECT MAX(rowid)
-                        FROM game_logs
-                        GROUP BY game_id, team_id
-                    )
-                ''')
+                # Remove duplicates (different approach for PostgreSQL vs SQLite)
+                if USE_POSTGRES:
+                    cursor.execute('''
+                        DELETE FROM game_logs a USING game_logs b
+                        WHERE a.ctid < b.ctid 
+                        AND a.game_id = b.game_id 
+                        AND a.team_id = b.team_id
+                    ''')
+                else:
+                    cursor.execute('''
+                        DELETE FROM game_logs
+                        WHERE rowid NOT IN (
+                            SELECT MAX(rowid)
+                            FROM game_logs
+                            GROUP BY game_id, team_id
+                        )
+                    ''')
                 conn.commit()
                 
                 total_games += len(games_df)
