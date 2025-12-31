@@ -380,10 +380,6 @@ def update_current_season_game_logs(conn, player_list=None, limit=None):
                             game.get('PLUS_MINUS'),
                             now
                         ))
-                        game['OREB'], game['DREB'], game['REB'],
-                        game['AST'], game['STL'], game['BLK'], game['TOV'], game['PF'], game['PTS'],
-                        game['PLUS_MINUS'], now
-                    ))
                 
                 total_games += len(df)
             
