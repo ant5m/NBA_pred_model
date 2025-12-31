@@ -400,7 +400,7 @@ def update_current_season_game_logs(conn, player_list=None, limit=None):
 
 def initial_build(limit_players=None):
     
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     
 
     create_tables(conn)
@@ -429,7 +429,7 @@ def update_database():
     print(f"UPDATE - NBA Player Stats Database ({CURRENT_SEASON})")
     print("=" * 80)
     
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     
     # Update ONLY current season stats
     print(f"\nUpdating season stats for {CURRENT_SEASON} only...")
