@@ -237,7 +237,7 @@ def update_player_info(conn, player_list):
                     is_active = EXCLUDED.is_active,
                     last_updated = EXCLUDED.last_updated
             ''', (player['id'], player['full_name'], player['first_name'], 
-                  player['last_name'], player['is_active'], now))
+                  player['last_name'], int(player['is_active']), now))
         else:
             cursor.execute('''
                 INSERT OR REPLACE INTO players 
