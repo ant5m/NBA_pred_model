@@ -9,11 +9,32 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from nba_model import EnsembleNBAPredictor
 from nba_api.stats.endpoints import scoreboardv2
-import sqlite3
 import pickle
 
 from api.models import GamePrediction
 from api.database import get_db
+
+# Database configuration for team/player stats
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+# Determine which database to use for team/player stats
+if DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://"):
+    USE_POSTGRES = True
+    import psycopg2
+    # Railway uses postgres://, but psycopg2 needs postgresql://
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+else:
+    USE_POSTGRES = False
+    import sqlite3
+
+
+def get_team_stats_connection():
+    """Get connection to team stats database (PostgreSQL or SQLite)."""
+    if USE_POSTGRES:
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        return sqlite3.connect('nba_team_stats.db')
 
 # Load model on startup
 ENSEMBLE = None
@@ -80,7 +101,7 @@ def get_todays_predictions() -> List[GamePrediction]:
     game_header_df = game_header_df.drop_duplicates(subset=['GAME_ID'])
     
     predictions = []
-    conn = sqlite3.connect('nba_team_stats.db')
+    conn = get_team_stats_connection()
     
     for _, game_row in game_header_df.iterrows():
         game_id = game_row['GAME_ID']
