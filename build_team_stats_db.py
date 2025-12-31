@@ -52,6 +52,13 @@ def create_tables():
     conn = get_connection()
     cursor = conn.cursor()
     
+    # Drop existing tables if using PostgreSQL to ensure clean schema
+    if USE_POSTGRES:
+        cursor.execute('DROP TABLE IF EXISTS game_logs CASCADE')
+        cursor.execute('DROP TABLE IF EXISTS season_stats CASCADE')
+        cursor.execute('DROP TABLE IF EXISTS teams CASCADE')
+        conn.commit()
+    
     # Teams table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS teams (
