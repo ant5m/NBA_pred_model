@@ -481,18 +481,48 @@ def initial_build(limit=None):
     print("=" * 60)
     print("INITIAL BUILD - NBA Team Stats Database")
     print("=" * 60)
+    print(f"USE_POSTGRES: {USE_POSTGRES}")
+    print(f"DATABASE_URL exists: {bool(DATABASE_URL)}")
     
-    # Step 0: Force drop all tables if PostgreSQL
+    # Step 0: Add missing columns to existing tables (PostgreSQL migration)
     if USE_POSTGRES:
-        print("FORCING CLEAN REBUILD - Dropping all existing tables...")
+        print("Migrating existing tables - adding missing columns...")
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute('DROP TABLE IF EXISTS game_logs CASCADE')
-        cursor.execute('DROP TABLE IF EXISTS season_stats CASCADE')
-        cursor.execute('DROP TABLE IF EXISTS teams CASCADE')
-        conn.commit()
-        conn.close()
-        print("✓ All tables dropped - starting fresh")
+        try:
+            # Add missing columns to season_stats if they don't exist
+            cursor.execute("""
+                ALTER TABLE season_stats 
+                ADD COLUMN IF NOT EXISTS win_pct REAL,
+                ADD COLUMN IF NOT EXISTS minutes_played REAL,
+                ADD COLUMN IF NOT EXISTS points REAL,
+                ADD COLUMN IF NOT EXISTS field_goals_made REAL,
+                ADD COLUMN IF NOT EXISTS field_goals_attempted REAL,
+                ADD COLUMN IF NOT EXISTS field_goal_pct REAL,
+                ADD COLUMN IF NOT EXISTS three_pointers_made REAL,
+                ADD COLUMN IF NOT EXISTS three_pointers_attempted REAL,
+                ADD COLUMN IF NOT EXISTS three_point_pct REAL,
+                ADD COLUMN IF NOT EXISTS free_throws_made REAL,
+                ADD COLUMN IF NOT EXISTS free_throws_attempted REAL,
+                ADD COLUMN IF NOT EXISTS free_throw_pct REAL,
+                ADD COLUMN IF NOT EXISTS offensive_rebounds REAL,
+                ADD COLUMN IF NOT EXISTS defensive_rebounds REAL,
+                ADD COLUMN IF NOT EXISTS total_rebounds REAL,
+                ADD COLUMN IF NOT EXISTS assists REAL,
+                ADD COLUMN IF NOT EXISTS turnovers REAL,
+                ADD COLUMN IF NOT EXISTS steals REAL,
+                ADD COLUMN IF NOT EXISTS blocks REAL,
+                ADD COLUMN IF NOT EXISTS personal_fouls REAL,
+                ADD COLUMN IF NOT EXISTS plus_minus REAL
+            """)
+            conn.commit()
+            print("✓ Schema migration complete")
+        except Exception as e:
+            print(f"Migration note: {e}")
+            # If table doesn't exist yet, that's fine - create_tables will make it
+            conn.rollback()
+        finally:
+            conn.close()
     
     # Step 1: Create tables
     create_tables()
