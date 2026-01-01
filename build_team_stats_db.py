@@ -490,31 +490,20 @@ def initial_build(limit=None):
         conn = get_connection()
         cursor = conn.cursor()
         try:
-            # Add missing columns to season_stats if they don't exist
-            cursor.execute("""
-                ALTER TABLE season_stats 
-                ADD COLUMN IF NOT EXISTS win_pct REAL,
-                ADD COLUMN IF NOT EXISTS minutes_played REAL,
-                ADD COLUMN IF NOT EXISTS points REAL,
-                ADD COLUMN IF NOT EXISTS field_goals_made REAL,
-                ADD COLUMN IF NOT EXISTS field_goals_attempted REAL,
-                ADD COLUMN IF NOT EXISTS field_goal_pct REAL,
-                ADD COLUMN IF NOT EXISTS three_pointers_made REAL,
-                ADD COLUMN IF NOT EXISTS three_pointers_attempted REAL,
-                ADD COLUMN IF NOT EXISTS three_point_pct REAL,
-                ADD COLUMN IF NOT EXISTS free_throws_made REAL,
-                ADD COLUMN IF NOT EXISTS free_throws_attempted REAL,
-                ADD COLUMN IF NOT EXISTS free_throw_pct REAL,
-                ADD COLUMN IF NOT EXISTS offensive_rebounds REAL,
-                ADD COLUMN IF NOT EXISTS defensive_rebounds REAL,
-                ADD COLUMN IF NOT EXISTS total_rebounds REAL,
-                ADD COLUMN IF NOT EXISTS assists REAL,
-                ADD COLUMN IF NOT EXISTS turnovers REAL,
-                ADD COLUMN IF NOT EXISTS steals REAL,
-                ADD COLUMN IF NOT EXISTS blocks REAL,
-                ADD COLUMN IF NOT EXISTS personal_fouls REAL,
-                ADD COLUMN IF NOT EXISTS plus_minus REAL
-            """)
+            # Add missing columns to season_stats if they don't exist (one at a time)
+            columns_to_add = [
+                'win_pct', 'minutes_played', 'points', 'field_goals_made', 
+                'field_goals_attempted', 'field_goal_pct', 'three_pointers_made',
+                'three_pointers_attempted', 'three_point_pct', 'free_throws_made',
+                'free_throws_attempted', 'free_throw_pct', 'offensive_rebounds',
+                'defensive_rebounds', 'total_rebounds', 'assists', 'turnovers',
+                'steals', 'blocks', 'personal_fouls', 'plus_minus'
+            ]
+            for col in columns_to_add:
+                try:
+                    cursor.execute(f"ALTER TABLE season_stats ADD COLUMN IF NOT EXISTS {col} REAL")
+                except:
+                    pass  # Column might already exist or table doesn't exist yet
             conn.commit()
             print("✓ Schema migration complete")
         except Exception as e:
