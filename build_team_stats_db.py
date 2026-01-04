@@ -52,15 +52,6 @@ def create_tables():
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Drop existing tables if using PostgreSQL to ensure clean schema
-    if USE_POSTGRES:
-        print("Dropping existing PostgreSQL tables for clean rebuild...")
-        cursor.execute('DROP TABLE IF EXISTS game_logs CASCADE')
-        cursor.execute('DROP TABLE IF EXISTS season_stats CASCADE')
-        cursor.execute('DROP TABLE IF EXISTS teams CASCADE')
-        conn.commit()
-        print("✓ Old tables dropped")
-    
     # Teams table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS teams (
@@ -484,34 +475,17 @@ def initial_build(limit=None):
     print(f"USE_POSTGRES: {USE_POSTGRES}")
     print(f"DATABASE_URL exists: {bool(DATABASE_URL)}")
     
-    # Step 0: Add missing columns to existing tables (PostgreSQL migration)
+    # Step 0: FORCE DROP and recreate tables for PostgreSQL
     if USE_POSTGRES:
-        print("Migrating existing tables - adding missing columns...")
+        print("FORCING COMPLETE REBUILD - Dropping all tables...")
         conn = get_connection()
         cursor = conn.cursor()
-        try:
-            # Add missing columns to season_stats if they don't exist (one at a time)
-            columns_to_add = [
-                'win_pct', 'minutes_played', 'points', 'field_goals_made', 
-                'field_goals_attempted', 'field_goal_pct', 'three_pointers_made',
-                'three_pointers_attempted', 'three_point_pct', 'free_throws_made',
-                'free_throws_attempted', 'free_throw_pct', 'offensive_rebounds',
-                'defensive_rebounds', 'total_rebounds', 'assists', 'turnovers',
-                'steals', 'blocks', 'personal_fouls', 'plus_minus'
-            ]
-            for col in columns_to_add:
-                try:
-                    cursor.execute(f"ALTER TABLE season_stats ADD COLUMN IF NOT EXISTS {col} REAL")
-                except:
-                    pass  # Column might already exist or table doesn't exist yet
-            conn.commit()
-            print("✓ Schema migration complete")
-        except Exception as e:
-            print(f"Migration note: {e}")
-            # If table doesn't exist yet, that's fine - create_tables will make it
-            conn.rollback()
-        finally:
-            conn.close()
+        cursor.execute('DROP TABLE IF EXISTS game_logs CASCADE')
+        cursor.execute('DROP TABLE IF EXISTS season_stats CASCADE')
+        cursor.execute('DROP TABLE IF EXISTS teams CASCADE')
+        conn.commit()
+        conn.close()
+        print("✓ All tables dropped successfully")
     
     # Step 1: Create tables
     create_tables()
