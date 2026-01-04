@@ -67,7 +67,7 @@ def create_tables():
     
     # Season stats table
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS season_stats (
+        CREATE TABLE IF NOT EXISTS team_season_stats (
             team_id INTEGER,
             season TEXT,
             games_played INTEGER,
@@ -101,7 +101,7 @@ def create_tables():
     
     # Game logs table (for current season)
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS game_logs (
+        CREATE TABLE IF NOT EXISTS team_game_logs (
             game_id TEXT,
             team_id INTEGER,
             season TEXT,
@@ -253,7 +253,7 @@ def update_season_stats(seasons=None):
             for _, row in stats_df.iterrows():
                 if USE_POSTGRES:
                     cursor.execute('''
-                        INSERT INTO season_stats
+                        INSERT INTO team_season_stats
                         (team_id, season, games_played, wins, losses, win_pct,
                          minutes_played, points, field_goals_made, field_goals_attempted,
                          field_goal_pct, three_pointers_made, three_pointers_attempted,
@@ -392,7 +392,7 @@ def update_current_season_game_logs(limit=None):
                     # Manually insert for PostgreSQL
                     for _, game in games_df.iterrows():
                         cursor.execute('''
-                            INSERT INTO game_logs
+                            INSERT INTO team_game_logs
                             (game_id, team_id, season, game_date, matchup, win_loss,
                              minutes, points, field_goals_made, field_goals_attempted,
                              field_goal_pct, three_pointers_made, three_pointers_attempted,
@@ -444,10 +444,10 @@ def update_current_season_game_logs(limit=None):
                     
                     # Remove duplicates for SQLite
                     cursor.execute('''
-                        DELETE FROM game_logs
+                        DELETE FROM team_game_logs
                         WHERE rowid NOT IN (
                             SELECT MAX(rowid)
-                            FROM game_logs
+                            FROM team_game_logs
                             GROUP BY game_id, team_id
                         )
                     ''')
@@ -473,19 +473,38 @@ def initial_build(limit=None):
     print("INITIAL BUILD - NBA Team Stats Database")
     print("=" * 60)
     print(f"USE_POSTGRES: {USE_POSTGRES}")
-    print(f"DATABASE_URL exists: {bool(DATABASE_URL)}")
+    print(f"DATABASE_URL: {DATABASE_URL[:50]}..." if len(DATABASE_URL) > 50 else f"DATABASE_URL: {DATABASE_URL}")
     
     # Step 0: FORCE DROP and recreate tables for PostgreSQL
     if USE_POSTGRES:
+        print("\n" + "=" * 60)
         print("FORCING COMPLETE REBUILD - Dropping all tables...")
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute('DROP TABLE IF EXISTS game_logs CASCADE')
-        cursor.execute('DROP TABLE IF EXISTS season_stats CASCADE')
-        cursor.execute('DROP TABLE IF EXISTS teams CASCADE')
-        conn.commit()
-        conn.close()
-        print("✓ All tables dropped successfully")
+        print("=" * 60)
+        try:
+            conn = get_connection()
+            print(f"✓ Connected to PostgreSQL")
+            cursor = conn.cursor()
+            
+cursor.execute('DROP TABLE IF EXISTS team_game_logs CASCADE')
+        print("  ✓ Dropped team_game_logs")
+        
+        cursor.execute('DROP TABLE IF EXISTS team_season_stats CASCADE')
+        print("  ✓ Dropped team_season_stats")
+            
+            cursor.execute('DROP TABLE IF EXISTS teams CASCADE')
+            print("  ✓ Dropped teams")
+            
+            conn.commit()
+            print("  ✓ Changes committed")
+            conn.close()
+            print("=" * 60)
+            print("✓ ALL TABLES DROPPED SUCCESSFULLY")
+            print("=" * 60 + "\n")
+        except Exception as e:
+            print(f"ERROR dropping tables: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
     
     # Step 1: Create tables
     create_tables()
@@ -539,14 +558,14 @@ def show_stats():
     print(f"Teams: {team_count}")
     
     # Season stats count
-    cursor.execute("SELECT COUNT(*) FROM season_stats")
+    cursor.execute("SELECT COUNT(*) FROM team_season_stats")
     season_count = cursor.fetchone()[0]
     print(f"Season stats records: {season_count}")
     
     # Season breakdown
     cursor.execute("""
         SELECT season, COUNT(*) as count
-        FROM season_stats
+        FROM team_season_stats
         GROUP BY season
         ORDER BY season
     """)
@@ -555,7 +574,7 @@ def show_stats():
         print(f"  {season}: {count} teams")
     
     # Game logs count
-    cursor.execute("SELECT COUNT(*) FROM game_logs")
+    cursor.execute("SELECT COUNT(*) FROM team_game_logs")
     game_count = cursor.fetchone()[0]
     print(f"\nGame logs: {game_count} total games")
     
@@ -563,13 +582,13 @@ def show_stats():
     if USE_POSTGRES:
         cursor.execute("""
             SELECT COUNT(DISTINCT game_id) as games
-            FROM game_logs
+            FROM team_game_logs
             WHERE season = %s
         """, (CURRENT_SEASON,))
     else:
         cursor.execute("""
             SELECT COUNT(DISTINCT game_id) as games
-            FROM game_logs
+            FROM team_game_logs
             WHERE season = ?
         """, (CURRENT_SEASON,))
     current_games = cursor.fetchone()[0]

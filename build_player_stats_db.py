@@ -66,7 +66,7 @@ def create_tables(conn):
     # Season stats table
     if USE_POSTGRES:
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS season_stats (
+            CREATE TABLE IF NOT EXISTS player_season_stats (
                 id SERIAL PRIMARY KEY,
                 player_id INTEGER,
                 player_name TEXT,
@@ -100,7 +100,7 @@ def create_tables(conn):
         ''')
     else:
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS season_stats (
+            CREATE TABLE IF NOT EXISTS player_season_stats (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 player_id INTEGER,
                 player_name TEXT,
@@ -136,7 +136,7 @@ def create_tables(conn):
     # Game log table (detailed game-by-game for current season)
     if USE_POSTGRES:
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS game_logs (
+            CREATE TABLE IF NOT EXISTS player_game_logs (
                 id SERIAL PRIMARY KEY,
                 player_id INTEGER,
                 player_name TEXT,
@@ -171,7 +171,7 @@ def create_tables(conn):
         ''')
     else:
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS game_logs (
+            CREATE TABLE IF NOT EXISTS player_game_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 player_id INTEGER,
                 player_name TEXT,
@@ -283,7 +283,7 @@ def update_season_stats(conn, seasons=SEASONS):
         for _, row in df.iterrows():
             if USE_POSTGRES:
                 cursor.execute('''
-                    INSERT INTO season_stats
+                    INSERT INTO player_season_stats
                     (player_id, player_name, season, team_abbreviation, age,
                      games_played, games_started, minutes_played,
                      field_goals_made, field_goals_attempted, field_goal_pct,
@@ -391,7 +391,7 @@ def update_current_season_game_logs(conn, player_list=None, limit=None):
                 for _, game in df.iterrows():
                     if USE_POSTGRES:
                         cursor.execute('''
-                            INSERT INTO game_logs
+                            INSERT INTO player_game_logs
                             (player_id, player_name, season, game_id, game_date, matchup, wl,
                              minutes, fgm, fga, fg_pct, fg3m, fg3a, fg3_pct,
                              ftm, fta, ft_pct, oreb, dreb, reb, ast, stl, blk, tov, pf, pts,
@@ -483,8 +483,8 @@ def initial_build(limit_players=None):
         print("FORCING CLEAN REBUILD - Dropping all existing tables...")
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute('DROP TABLE IF EXISTS game_logs CASCADE')
-        cursor.execute('DROP TABLE IF EXISTS season_stats CASCADE')
+        cursor.execute('DROP TABLE IF EXISTS player_game_logs CASCADE')
+        cursor.execute('DROP TABLE IF EXISTS player_season_stats CASCADE')
         cursor.execute('DROP TABLE IF EXISTS players CASCADE')
         conn.commit()
         conn.close()
@@ -547,18 +547,18 @@ def show_stats():
     cursor.execute("SELECT COUNT(*) FROM players")
     print(f"Total players: {cursor.fetchone()[0]:,}")
     
-    cursor.execute("SELECT COUNT(*) FROM season_stats")
+    cursor.execute("SELECT COUNT(*) FROM player_season_stats")
     print(f"Season stats records: {cursor.fetchone()[0]:,}")
     
-    cursor.execute("SELECT COUNT(*) FROM game_logs")
+    cursor.execute("SELECT COUNT(*) FROM player_game_logs")
     print(f"Game log entries: {cursor.fetchone()[0]:,}")
     
-    cursor.execute("SELECT season, COUNT(*) FROM season_stats GROUP BY season")
+    cursor.execute("SELECT season, COUNT(*) FROM player_season_stats GROUP BY season")
     print("\nRecords per season:")
     for row in cursor.fetchall():
         print(f"  {row[0]}: {row[1]:,} records")
     
-    cursor.execute("SELECT last_updated FROM season_stats ORDER BY last_updated DESC LIMIT 1")
+    cursor.execute("SELECT last_updated FROM player_season_stats ORDER BY last_updated DESC LIMIT 1")
     last_update = cursor.fetchone()
     if last_update:
         print(f"\nLast updated: {last_update[0]}")

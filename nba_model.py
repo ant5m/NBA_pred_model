@@ -84,7 +84,7 @@ class NBAGamePredictor:
                 win_pct, points, field_goal_pct, three_point_pct, free_throw_pct,
                 total_rebounds, assists, steals, blocks, turnovers, personal_fouls,
                 offensive_rebounds, defensive_rebounds, plus_minus
-            FROM season_stats
+            FROM team_season_stats
             WHERE team_id = {param_placeholder} AND season IN ({placeholders})
             ORDER BY season DESC
             LIMIT 1
@@ -97,7 +97,7 @@ class NBAGamePredictor:
                 points, field_goal_pct, three_point_pct, free_throw_pct,
                 total_rebounds, assists, steals, blocks, turnovers,
                 plus_minus, win_loss
-            FROM game_logs
+            FROM team_game_logs
             WHERE team_id = {param_placeholder} AND season IN ({placeholders})
             ORDER BY game_date DESC
             LIMIT 10
@@ -179,7 +179,7 @@ class NBAGamePredictor:
             SELECT 
                 points, assists, total_rebounds, steals, blocks, turnovers,
                 field_goal_pct, three_point_pct, free_throw_pct, minutes_played
-            FROM season_stats
+            FROM player_season_stats
             WHERE team_abbreviation = {param_placeholder} AND season IN ({placeholders})
             ORDER BY season DESC, minutes_played DESC
             LIMIT {param_placeholder}
@@ -317,7 +317,7 @@ class NBAGamePredictor:
                 g2.points as away_points,
                 g1.game_date,
                 g1.season
-            FROM game_logs g1
+            FROM team_game_logs g1
             JOIN game_logs g2 ON g1.game_id = g2.game_id AND g1.team_id != g2.team_id
             WHERE g1.matchup LIKE '%vs%'
                 AND g1.season IN ({placeholders})
@@ -589,7 +589,7 @@ class NBAGamePredictor:
         # Get all players for this team from the database
         query = f"""
             SELECT DISTINCT player_name, season, minutes_played
-            FROM season_stats
+            FROM team_season_stats
             WHERE team_abbreviation = ? 
                 AND season IN ({placeholders_seasons})
             ORDER BY season DESC, minutes_played DESC
@@ -659,7 +659,7 @@ class NBAGamePredictor:
                 points, assists, total_rebounds, steals, blocks, turnovers,
                 field_goal_pct, three_point_pct, free_throw_pct, minutes_played,
                 player_name
-            FROM season_stats
+            FROM team_season_stats
             WHERE player_name IN ({placeholders_players}) 
                 AND team_abbreviation = ? 
                 AND season IN ({placeholders_seasons})
