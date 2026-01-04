@@ -485,11 +485,11 @@ def initial_build(limit=None):
             print(f"✓ Connected to PostgreSQL")
             cursor = conn.cursor()
             
-cursor.execute('DROP TABLE IF EXISTS team_game_logs CASCADE')
-        print("  ✓ Dropped team_game_logs")
-        
-        cursor.execute('DROP TABLE IF EXISTS team_season_stats CASCADE')
-        print("  ✓ Dropped team_season_stats")
+            cursor.execute('DROP TABLE IF EXISTS team_game_logs CASCADE')
+            print("  ✓ Dropped team_game_logs")
+            
+            cursor.execute('DROP TABLE IF EXISTS team_season_stats CASCADE')
+            print("  ✓ Dropped team_season_stats")
             
             cursor.execute('DROP TABLE IF EXISTS teams CASCADE')
             print("  ✓ Dropped teams")
