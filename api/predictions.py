@@ -81,6 +81,17 @@ def apply_calibration(raw_prob: float) -> float:
     else:
         calibrated = raw_prob
     
+    # Apply temperature scaling to reduce overconfidence
+    # Temperature > 1 makes predictions less extreme (more conservative)
+    temperature = 1.5
+    calibrated = np.clip(calibrated, 1e-7, 1 - 1e-7)  # Avoid log(0)
+    logit = np.log(calibrated / (1 - calibrated))
+    scaled_logit = logit / temperature
+    calibrated = 1 / (1 + np.exp(-scaled_logit))
+    
+    # Final clamp to reasonable range
+    calibrated = np.clip(calibrated, 0.01, 0.99)
+    
     return float(calibrated)
 
 
