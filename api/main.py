@@ -27,7 +27,7 @@ from api.models import (
     OverallAccuracy,
     GamePrediction
 )
-from api.predictions import get_todays_predictions, get_predictions_for_date
+from api.predictions import get_todays_predictions, get_predictions_for_date, save_predictions_to_db
 from api.analytics import get_monthly_accuracy, get_overall_accuracy
 from api.boxscore import get_box_score
 
@@ -102,6 +102,11 @@ def get_today():
     """Get predictions for today's games."""
     try:
         predictions = get_todays_predictions()
+        
+        # Auto-save predictions to database
+        if predictions:
+            save_predictions_to_db(predictions)
+        
         return PredictionResponse(
             date=date.today().isoformat(),
             games=predictions,
@@ -142,22 +147,26 @@ def get_history(
         # Get predictions from last N days
         start_date = (date.today() - timedelta(days=days)).isoformat()
         
-        cursor.execute("""
+        # Use appropriate placeholders for database type
+        from api.database import USE_POSTGRES
+        placeholder = "%s" if USE_POSTGRES else "?"
+        
+        cursor.execute(f"""
             SELECT COUNT(*) FROM predictions 
-            WHERE date >= ?
+            WHERE date >= {placeholder}
         """, (start_date,))
         total = cursor.fetchone()[0]
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 date, game_id, home_team_abbr, away_team_abbr,
                 predicted_home_prob, predicted_away_prob,
                 pred_home_points, pred_away_points,
                 actual_home_score, actual_away_score, actual_home_win, correct
             FROM predictions
-            WHERE date >= ?
+            WHERE date >= {placeholder}
             ORDER BY date DESC, game_id
-            LIMIT ? OFFSET ?
+            LIMIT {placeholder} OFFSET {placeholder}
         """, (start_date, limit, skip))
         
         rows = cursor.fetchall()

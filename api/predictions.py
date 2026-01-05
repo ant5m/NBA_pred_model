@@ -12,26 +12,26 @@ from nba_api.stats.endpoints import scoreboardv2
 import pickle
 
 from api.models import GamePrediction
-from api.database import get_db
+from api.database import get_db, USE_POSTGRES
 
 # Database configuration for team/player stats
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # Determine which database to use for team/player stats
 if DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://"):
-    USE_POSTGRES = True
+    TEAM_STATS_USE_POSTGRES = True
     import psycopg2
     # Railway uses postgres://, but psycopg2 needs postgresql://
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 else:
-    USE_POSTGRES = False
+    TEAM_STATS_USE_POSTGRES = False
     import sqlite3
 
 
 def get_team_stats_connection():
     """Get connection to team stats database (PostgreSQL or SQLite)."""
-    if USE_POSTGRES:
+    if TEAM_STATS_USE_POSTGRES:
         return psycopg2.connect(DATABASE_URL)
     else:
         return sqlite3.connect('nba_team_stats.db')
@@ -157,14 +157,17 @@ def get_predictions_for_date(target_date: date) -> List[GamePrediction]:
     db = get_db()
     cursor = db.cursor()
     
-    cursor.execute("""
+    from api.database import USE_POSTGRES
+    placeholder = "%s" if USE_POSTGRES else "?"
+    
+    cursor.execute(f"""
         SELECT 
             date, game_id, home_team_abbr, away_team_abbr,
             predicted_home_prob, predicted_away_prob,
             pred_home_points, pred_away_points,
             actual_home_score, actual_away_score, actual_home_win, correct
         FROM predictions
-        WHERE date = ?
+        WHERE date = {placeholder}
         ORDER BY game_id
     """, (target_date.isoformat(),))
     
@@ -188,3 +191,54 @@ def get_predictions_for_date(target_date: date) -> List[GamePrediction]:
         ))
     
     return predictions
+
+
+def save_predictions_to_db(predictions: List[GamePrediction]) -> None:
+    """Save predictions to database."""
+    db = get_db()
+    cursor = db.cursor()
+    
+    try:
+        for pred in predictions:
+            if USE_POSTGRES:
+                # PostgreSQL: Use ON CONFLICT and %s placeholders
+                cursor.execute("""
+                    INSERT INTO predictions (
+                        date, game_id, home_team_abbr, away_team_abbr,
+                        home_team_id, away_team_id,
+                        predicted_home_prob, predicted_away_prob,
+                        pred_home_points, pred_away_points
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (date, game_id) DO UPDATE SET
+                        predicted_home_prob = EXCLUDED.predicted_home_prob,
+                        predicted_away_prob = EXCLUDED.predicted_away_prob,
+                        pred_home_points = EXCLUDED.pred_home_points,
+                        pred_away_points = EXCLUDED.pred_away_points
+                """, (
+                    pred.date, pred.game_id, pred.home_team, pred.away_team,
+                    None, None,
+                    pred.predicted_home_prob, pred.predicted_away_prob,
+                    pred.predicted_home_score, pred.predicted_away_score
+                ))
+            else:
+                # SQLite: Use INSERT OR REPLACE and ? placeholders
+                cursor.execute("""
+                    INSERT OR REPLACE INTO predictions (
+                        date, game_id, home_team_abbr, away_team_abbr,
+                        home_team_id, away_team_id,
+                        predicted_home_prob, predicted_away_prob,
+                        pred_home_points, pred_away_points
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    pred.date, pred.game_id, pred.home_team, pred.away_team,
+                    None, None,
+                    pred.predicted_home_prob, pred.predicted_away_prob,
+                    pred.predicted_home_score, pred.predicted_away_score
+                ))
+        
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        cursor.close()
