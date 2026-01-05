@@ -1,8 +1,14 @@
 """Analytics and accuracy calculations."""
 
 from typing import List
+import os
 from api.models import MonthlyAccuracy, OverallAccuracy
 from api.database import get_db
+
+
+def is_postgres() -> bool:
+    """Check if using PostgreSQL."""
+    return 'DATABASE_URL' in os.environ and 'postgresql' in os.environ['DATABASE_URL']
 
 
 def get_monthly_accuracy() -> List[MonthlyAccuracy]:
@@ -10,9 +16,12 @@ def get_monthly_accuracy() -> List[MonthlyAccuracy]:
     db = get_db()
     cursor = db.cursor()
     
-    cursor.execute("""
+    # Use appropriate date formatting for database type
+    date_format = "to_char(date, 'YYYY-MM')" if is_postgres() else "strftime('%Y-%m', date)"
+    
+    cursor.execute(f"""
         SELECT 
-            strftime('%Y-%m', date) as month,
+            {date_format} as month,
             COUNT(*) as total,
             SUM(correct) as correct,
             AVG(predicted_home_prob) as avg_conf
@@ -60,16 +69,19 @@ def get_overall_accuracy() -> OverallAccuracy:
     correct = correct or 0
     
     # Best month
-    cursor.execute("""
+    date_format = "to_char(date, 'YYYY-MM')" if is_postgres() else "strftime('%Y-%m', date)"
+    cast_type = "FLOAT" if is_postgres() else "REAL"
+    
+    cursor.execute(f"""
         SELECT 
-            strftime('%Y-%m', date) as month,
+            {date_format} as month,
             COUNT(*) as total,
             SUM(correct) as correct
         FROM predictions
         WHERE correct IS NOT NULL
         GROUP BY month
         HAVING COUNT(*) >= 10
-        ORDER BY (CAST(SUM(correct) AS REAL) / COUNT(*)) DESC
+        ORDER BY (CAST(SUM(correct) AS {cast_type}) / COUNT(*)) DESC
         LIMIT 1
     """)
     
