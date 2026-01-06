@@ -3,7 +3,8 @@
 
 import os
 import sys
-from datetime import date, timedelta
+from datetime import datetime
+import pytz
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -12,7 +13,9 @@ from api.database import get_db, USE_POSTGRES
 
 def main():
     """Update predictions with actual game results."""
-    print(f"[{date.today()}] Updating predictions with results...")
+    eastern = pytz.timezone('America/New_York')
+    today_et = datetime.now(eastern).date()
+    print(f"[{today_et}] Updating predictions with results...")
     
     try:
         # Get live/finished games
@@ -54,31 +57,52 @@ def main():
                 if row:
                     pred_home_prob = row[0]
                     predicted_home_win = 1 if pred_home_prob >= 0.5 else 0
-                    correct = 1 if predicted_home_win == home_win else 0
                     
-                    # Update database
-                    if USE_POSTGRES:
-                        cursor.execute("""
-                            UPDATE predictions
-                            SET actual_home_score = %s,
-                                actual_away_score = %s,
-                                actual_home_win = %s,
-                                correct = %s
-                            WHERE game_id = %s
-                        """, (home_score, away_score, home_win, correct, game_id))
-                    else:
-                        cursor.execute("""
-                            UPDATE predictions
-                            SET actual_home_score = ?,
-                                actual_away_score = ?,
-                                actual_home_win = ?,
-                                correct = ?
-                            WHERE game_id = ?
-                        """, (home_score, away_score, home_win, correct, game_id))
-                    
-                    updated += 1
-                    status_text = "✓" if correct else "✗"
-                    print(f"  {status_text} Game {game_id}: {home_score}-{away_score}")
+                    # Only mark correct for final games
+                    if status == 3:  # Final
+                        correct = 1 if predicted_home_win == home_win else 0
+                        
+                        # Update database
+                        if USE_POSTGRES:
+                            cursor.execute("""
+                                UPDATE predictions
+                                SET actual_home_score = %s,
+                                    actual_away_score = %s,
+                                    actual_home_win = %s,
+                                    correct = %s
+                                WHERE game_id = %s
+                            """, (home_score, away_score, home_win, correct, game_id))
+                        else:
+                            cursor.execute("""
+                                UPDATE predictions
+                                SET actual_home_score = ?,
+                                    actual_away_score = ?,
+                                    actual_home_win = ?,
+                                    correct = ?
+                                WHERE game_id = ?
+                            """, (home_score, away_score, home_win, correct, game_id))
+                        
+                        updated += 1
+                        status_text = "✓" if correct else "✗"
+                        print(f"  {status_text} Game {game_id}: {home_score}-{away_score}")
+                    else:  # Live - update scores but not correctness
+                        if USE_POSTGRES:
+                            cursor.execute("""
+                                UPDATE predictions
+                                SET actual_home_score = %s,
+                                    actual_away_score = %s
+                                WHERE game_id = %s
+                            """, (home_score, away_score, game_id))
+                        else:
+                            cursor.execute("""
+                                UPDATE predictions
+                                SET actual_home_score = ?,
+                                    actual_away_score = ?
+                                WHERE game_id = ?
+                            """, (home_score, away_score, game_id))
+                        
+                        updated += 1
+                        print(f"  ⏳ Game {game_id}: {home_score}-{away_score} (Live)")
         
         db.commit()
         cursor.close()

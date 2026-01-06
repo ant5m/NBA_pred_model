@@ -3,7 +3,8 @@
 
 import os
 import sys
-from datetime import date
+from datetime import datetime
+import pytz
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -12,7 +13,9 @@ from api.database import get_db, USE_POSTGRES
 
 def main():
     """Generate predictions and save to database."""
-    print(f"[{date.today()}] Generating predictions...")
+    eastern = pytz.timezone('America/New_York')
+    today_et = datetime.now(eastern).date()
+    print(f"[{today_et}] Generating predictions...")
     
     try:
         predictions = get_todays_predictions()

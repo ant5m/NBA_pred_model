@@ -2,8 +2,9 @@
 
 import sys
 import os
-from datetime import date
+from datetime import date, datetime
 from typing import List
+import pytz
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -100,7 +101,9 @@ def get_todays_predictions() -> List[GamePrediction]:
     load_model()
     
     # Get today's games from NBA API
-    today = date.today()
+    # Use Eastern timezone since NBA schedules are in ET
+    eastern = pytz.timezone('America/New_York')
+    today = datetime.now(eastern).date()
     board = scoreboardv2.ScoreboardV2(game_date=today.strftime('%m/%d/%Y'))
     game_header_df = board.game_header.get_data_frame()
     line_score_df = board.line_score.get_data_frame()

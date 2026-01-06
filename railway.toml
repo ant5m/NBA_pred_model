@@ -14,7 +14,7 @@ command = "python3 scripts/cron_predict.py"
 
 [[crons]]
 name = "update-results"
-schedule = "0 3 * * *"
+schedule = "0 */2 * * *"
 command = "python3 scripts/cron_update.py"
 
 [[crons]]

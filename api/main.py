@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 from typing import List, Optional
 import os
 import sys
+import pytz
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,6 +31,9 @@ from api.models import (
 from api.predictions import get_todays_predictions, get_predictions_for_date, save_predictions_to_db
 from api.analytics import get_monthly_accuracy, get_overall_accuracy
 from api.boxscore import get_box_score
+
+# Import for updating results
+from nba_api.live.nba.endpoints import scoreboard as live_scoreboard
 
 app = FastAPI(
     title="NBA Prediction API",
@@ -107,8 +111,12 @@ def get_today():
         if predictions:
             save_predictions_to_db(predictions)
         
+        # Use Eastern timezone for consistent date handling
+        eastern = pytz.timezone('America/New_York')
+        today_et = datetime.now(eastern).date()
+        
         return PredictionResponse(
-            date=date.today().isoformat(),
+            date=today_et.isoformat(),
             games=predictions,
             count=len(predictions)
         )
@@ -144,8 +152,10 @@ def get_history(
         db = get_db()
         cursor = db.cursor()
         
-        # Get predictions from last N days
-        start_date = (date.today() - timedelta(days=days)).isoformat()
+        # Get predictions from last N days (use Eastern timezone)
+        eastern = pytz.timezone('America/New_York')
+        today_et = datetime.now(eastern).date()
+        start_date = (today_et - timedelta(days=days)).isoformat()
         
         # Use appropriate placeholders for database type
         from api.database import USE_POSTGRES
@@ -214,6 +224,87 @@ def get_overall():
         return get_overall_accuracy()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating overall accuracy: {str(e)}")
+
+
+@app.post("/predictions/update-results")
+def update_results():
+    """Update predictions with actual game results from NBA Live API."""
+    try:
+        # Get live/finished games
+        board = live_scoreboard.ScoreBoard()
+        games_data = board.games.get_dict()
+        
+        if not games_data:
+            return {"message": "No games found", "updated": 0}
+        
+        db = get_db()
+        cursor = db.cursor()
+        updated = 0
+        results = []
+        
+        from api.database import USE_POSTGRES
+        placeholder = "%s" if USE_POSTGRES else "?"
+        
+        for game in games_data:
+            game_id = game['gameId']
+            status = game['gameStatus']  # 1=scheduled, 2=live, 3=final
+            
+            if status in [2, 3]:  # Live or Final
+                home_score = game['homeTeam']['score']
+                away_score = game['awayTeam']['score']
+                home_win = 1 if home_score > away_score else 0
+                
+                # Get prediction to check correctness
+                cursor.execute(f"""
+                    SELECT predicted_home_prob, home_team_abbr, away_team_abbr
+                    FROM predictions
+                    WHERE game_id = {placeholder}
+                """, (game_id,))
+                
+                row = cursor.fetchone()
+                if row:
+                    pred_home_prob, home_team, away_team = row
+                    predicted_home_win = 1 if pred_home_prob >= 0.5 else 0
+                    correct = 1 if predicted_home_win == home_win else 0
+                    
+                    # Update database - only mark correct for final games
+                    if status == 3:  # Final only
+                        cursor.execute(f"""
+                            UPDATE predictions
+                            SET actual_home_score = {placeholder},
+                                actual_away_score = {placeholder},
+                                actual_home_win = {placeholder},
+                                correct = {placeholder}
+                            WHERE game_id = {placeholder}
+                        """, (home_score, away_score, home_win, correct, game_id))
+                    else:  # Live - update scores but not correctness yet
+                        cursor.execute(f"""
+                            UPDATE predictions
+                            SET actual_home_score = {placeholder},
+                                actual_away_score = {placeholder}
+                            WHERE game_id = {placeholder}
+                        """, (home_score, away_score, game_id))
+                    
+                    updated += 1
+                    results.append({
+                        "game_id": game_id,
+                        "matchup": f"{away_team} @ {home_team}",
+                        "score": f"{home_score}-{away_score}",
+                        "status": "Final" if status == 3 else "Live",
+                        "correct": correct if status == 3 else None
+                    })
+        
+        db.commit()
+        cursor.close()
+        
+        return {
+            "message": f"Updated {updated} games",
+            "updated": updated,
+            "games": results
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating results: {str(e)}")
 
 
 if __name__ == "__main__":
