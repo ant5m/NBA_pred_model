@@ -1,7 +1,39 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Trophy } from "lucide-react";
 
 export default function Home() {
+  const [stats, setStats] = useState({
+    accuracy: 0,
+    totalGames: 0,
+    modelCount: 5,
+  });
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/accuracy/overall`
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setStats({
+          accuracy: Math.round(data.accuracy * 100),
+          totalGames: data.total_predictions,
+          modelCount: 5,
+        });
+      }
+    } catch (err) {
+      console.error("Failed to fetch stats:", err);
+      // Keep default values
+    }
+  };
   return (
     <div className="flex items-center justify-center px-4 py-16">
       <div className="max-w-4xl w-full text-center">
@@ -47,19 +79,25 @@ export default function Home() {
 
         <div className="mt-16 grid grid-cols-3 gap-8 max-w-3xl mx-auto">
           <div>
-            <div className="text-4xl font-bold text-nba-blue mb-2">74%</div>
+            <div className="text-4xl font-bold text-nba-blue mb-2">
+              {stats.accuracy}%
+            </div>
             <div className="text-gray-600 dark:text-gray-300">
               Overall Accuracy
             </div>
           </div>
           <div>
-            <div className="text-4xl font-bold text-nba-blue mb-2">250+</div>
+            <div className="text-4xl font-bold text-nba-blue mb-2">
+              {stats.totalGames}+
+            </div>
             <div className="text-gray-600 dark:text-gray-300">
               Games Analyzed
             </div>
           </div>
           <div>
-            <div className="text-4xl font-bold text-nba-blue mb-2">5</div>
+            <div className="text-4xl font-bold text-nba-blue mb-2">
+              {stats.modelCount}
+            </div>
             <div className="text-gray-600 dark:text-gray-300">
               Model Ensemble
             </div>

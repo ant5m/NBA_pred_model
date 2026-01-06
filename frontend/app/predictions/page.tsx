@@ -24,13 +24,67 @@ export default function PredictionsPage() {
   const [predictions, setPredictions] = useState<GamePrediction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cachedDate, setCachedDate] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
-    fetchPredictions();
+    loadPredictions();
   }, []);
 
-  const fetchPredictions = async () => {
-    setLoading(true);
+  const loadPredictions = () => {
+    // Try to load from cache first
+    const cached = getCachedPredictions();
+    if (cached) {
+      setPredictions(cached.games);
+      setCachedDate(cached.date);
+      setLoading(false);
+
+      // Check if cache is stale (different date or old)
+      const today = new Date().toISOString().split("T")[0];
+      const cacheAge = Date.now() - cached.timestamp;
+      const isStale = cached.date !== today || cacheAge > 3600000; // 1 hour
+
+      if (isStale) {
+        // Fetch in background to update cache
+        fetchPredictions(true);
+      }
+    } else {
+      // No cache, fetch immediately
+      fetchPredictions();
+    }
+  };
+
+  const getCachedPredictions = () => {
+    try {
+      const cached = localStorage.getItem("nba_predictions");
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch (e) {
+      console.error("Failed to load cached predictions:", e);
+    }
+    return null;
+  };
+
+  const cachePredictions = (games: GamePrediction[], date: string) => {
+    try {
+      const cache = {
+        games,
+        date,
+        timestamp: Date.now(),
+      };
+      localStorage.setItem("nba_predictions", JSON.stringify(cache));
+    } catch (e) {
+      console.error("Failed to cache predictions:", e);
+    }
+  };
+
+  const fetchPredictions = async (background = false) => {
+    if (!background) {
+      setLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
     setError(null);
 
     try {
@@ -44,20 +98,46 @@ export default function PredictionsPage() {
 
       const data = await response.json();
       setPredictions(data.games || []);
+      setCachedDate(data.date);
+
+      // Cache the predictions
+      cachePredictions(data.games || [], data.date);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
       <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2 flex items-center gap-3">
-          <Calendar className="w-10 h-10 text-nba-blue" />
-          Game Predictions
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-4xl font-bold mb-2 flex items-center gap-3">
+            <Calendar className="w-10 h-10 text-nba-blue" />
+            Game Predictions
+          </h1>
+          <button
+            onClick={() => fetchPredictions()}
+            disabled={isRefreshing}
+            className="px-4 py-2 bg-nba-blue text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {isRefreshing ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Updating...
+              </>
+            ) : (
+              <>Refresh</>
+            )}
+          </button>
+        </div>
+        {cachedDate && (
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+            Predictions for {cachedDate}
+          </p>
+        )}
       </div>
 
       {/* Loading State */}
