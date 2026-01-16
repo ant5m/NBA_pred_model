@@ -179,7 +179,7 @@ def get_predictions_for_date(target_date: date) -> List[GamePrediction]:
     
     for row in rows:
         predictions.append(GamePrediction(
-            date=row[0],
+            date=str(row[0]) if row[0] else "",  # Convert date to string
             game_id=row[1],
             home_team=row[2],
             away_team=row[3],

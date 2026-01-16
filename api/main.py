@@ -184,7 +184,7 @@ def get_history(
         
         for row in rows:
             predictions.append(GamePrediction(
-                date=row[0],
+                date=str(row[0]) if row[0] else "",  # Convert date to string
                 game_id=row[1],
                 home_team=row[2],
                 away_team=row[3],
@@ -224,6 +224,94 @@ def get_overall():
         return get_overall_accuracy()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating overall accuracy: {str(e)}")
+
+
+@app.post("/admin/update-results")
+def update_results():
+    """Manually trigger update of predictions with actual game results."""
+    try:
+        from nba_api.live.nba.endpoints import scoreboard as live_scoreboard
+        
+        board = live_scoreboard.ScoreBoard()
+        games_data = board.games.get_dict()
+        
+        if not games_data:
+            return {"status": "success", "message": "No games found", "updated": 0}
+        
+        db = get_db()
+        cursor = db.cursor()
+        from api.database import USE_POSTGRES
+        placeholder = "%s" if USE_POSTGRES else "?"
+        updated = 0
+        results = []
+        
+        for game in games_data:
+            game_id = game['gameId']
+            status = game['gameStatus']  # 1=scheduled, 2=live, 3=final
+            
+            if status in [2, 3]:  # Live or Final
+                home_score = game['homeTeam']['score']
+                away_score = game['awayTeam']['score']
+                home_win = 1 if home_score > away_score else 0
+                
+                # Get prediction to check correctness
+                cursor.execute(f"""
+                    SELECT predicted_home_prob
+                    FROM predictions
+                    WHERE game_id = {placeholder}
+                """, (game_id,))
+                
+                row = cursor.fetchone()
+                if row:
+                    pred_home_prob = row[0]
+                    predicted_home_win = 1 if pred_home_prob >= 0.5 else 0
+                    
+                    # Only mark correct for final games
+                    if status == 3:  # Final
+                        correct = 1 if predicted_home_win == home_win else 0
+                        
+                        cursor.execute(f"""
+                            UPDATE predictions
+                            SET actual_home_score = {placeholder},
+                                actual_away_score = {placeholder},
+                                actual_home_win = {placeholder},
+                                correct = {placeholder}
+                            WHERE game_id = {placeholder}
+                        """, (home_score, away_score, home_win, correct, game_id))
+                        
+                        updated += 1
+                        results.append({
+                            "game_id": game_id,
+                            "score": f"{home_score}-{away_score}",
+                            "correct": bool(correct),
+                            "status": "final"
+                        })
+                    else:  # Live
+                        cursor.execute(f"""
+                            UPDATE predictions
+                            SET actual_home_score = {placeholder},
+                                actual_away_score = {placeholder}
+                            WHERE game_id = {placeholder}
+                        """, (home_score, away_score, game_id))
+                        
+                        updated += 1
+                        results.append({
+                            "game_id": game_id,
+                            "score": f"{home_score}-{away_score}",
+                            "status": "live"
+                        })
+        
+        db.commit()
+        cursor.close()
+        
+        return {
+            "status": "success",
+            "message": f"Updated {updated} games",
+            "updated": updated,
+            "results": results
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating results: {str(e)}")
 
 
 @app.post("/predictions/update-results")
