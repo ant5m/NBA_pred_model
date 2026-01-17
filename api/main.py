@@ -230,85 +230,108 @@ def get_overall():
 def update_results():
     """Manually trigger update of predictions with actual game results."""
     try:
-        from nba_api.live.nba.endpoints import scoreboard as live_scoreboard
-        
-        board = live_scoreboard.ScoreBoard()
-        games_data = board.games.get_dict()
-        
-        if not games_data:
-            return {"status": "success", "message": "No games found", "updated": 0}
+        from nba_api.stats.endpoints import scoreboardv2
+        from api.database import USE_POSTGRES
         
         db = get_db()
         cursor = db.cursor()
-        from api.database import USE_POSTGRES
         placeholder = "%s" if USE_POSTGRES else "?"
+        
+        # Get all predictions without results
+        cursor.execute(f"""
+            SELECT DISTINCT date
+            FROM predictions
+            WHERE actual_home_score IS NULL
+            ORDER BY date
+        """)
+        
+        dates_to_check = [row[0] for row in cursor.fetchall()]
+        
         updated = 0
         results = []
         
-        for game in games_data:
-            game_id = game['gameId']
-            status = game['gameStatus']  # 1=scheduled, 2=live, 3=final
+        for pred_date in dates_to_check:
+            # Convert date string to MM/DD/YYYY format for NBA API
+            if isinstance(pred_date, str):
+                date_parts = pred_date.split('-')
+                nba_date = f"{date_parts[1]}/{date_parts[2]}/{date_parts[0]}"
+            else:
+                nba_date = pred_date.strftime('%m/%d/%Y')
             
-            if status in [2, 3]:  # Live or Final
-                home_score = game['homeTeam']['score']
-                away_score = game['awayTeam']['score']
-                home_win = 1 if home_score > away_score else 0
+            try:
+                # Get games for this date
+                board = scoreboardv2.ScoreboardV2(game_date=nba_date)
+                game_header = board.game_header.get_data_frame()
+                line_score = board.line_score.get_data_frame()
                 
-                # Get prediction to check correctness
-                cursor.execute(f"""
-                    SELECT predicted_home_prob
-                    FROM predictions
-                    WHERE game_id = {placeholder}
-                """, (game_id,))
+                if game_header.empty:
+                    continue
                 
-                row = cursor.fetchone()
-                if row:
-                    pred_home_prob = row[0]
-                    predicted_home_win = 1 if pred_home_prob >= 0.5 else 0
+                # Process each game
+                for _, game_row in game_header.iterrows():
+                    game_id = game_row['GAME_ID']
+                    status_text = game_row['GAME_STATUS_TEXT']
                     
-                    # Only mark correct for final games
-                    if status == 3:  # Final
-                        correct = 1 if predicted_home_win == home_win else 0
+                    if status_text == 'Final':
+                        # Get scores from line_score
+                        game_scores = line_score[line_score['GAME_ID'] == game_id]
                         
-                        cursor.execute(f"""
-                            UPDATE predictions
-                            SET actual_home_score = {placeholder},
-                                actual_away_score = {placeholder},
-                                actual_home_win = {placeholder},
-                                correct = {placeholder}
-                            WHERE game_id = {placeholder}
-                        """, (home_score, away_score, home_win, correct, game_id))
-                        
-                        updated += 1
-                        results.append({
-                            "game_id": game_id,
-                            "score": f"{home_score}-{away_score}",
-                            "correct": bool(correct),
-                            "status": "final"
-                        })
-                    else:  # Live
-                        cursor.execute(f"""
-                            UPDATE predictions
-                            SET actual_home_score = {placeholder},
-                                actual_away_score = {placeholder}
-                            WHERE game_id = {placeholder}
-                        """, (home_score, away_score, game_id))
-                        
-                        updated += 1
-                        results.append({
-                            "game_id": game_id,
-                            "score": f"{home_score}-{away_score}",
-                            "status": "live"
-                        })
+                        if len(game_scores) >= 2:
+                            # First row is usually home team
+                            home_score = int(game_scores.iloc[0]['PTS'])
+                            away_score = int(game_scores.iloc[1]['PTS'])
+                            
+                            # Verify which is home/away by team IDs
+                            home_team_id = game_row['HOME_TEAM_ID']
+                            if game_scores.iloc[0]['TEAM_ID'] != home_team_id:
+                                # Swap if first row wasn't home
+                                home_score, away_score = away_score, home_score
+                            
+                            home_win = 1 if home_score > away_score else 0
+                            
+                            # Get prediction
+                            cursor.execute(f"""
+                                SELECT predicted_home_prob
+                                FROM predictions
+                                WHERE game_id = {placeholder}
+                            """, (game_id,))
+                            
+                            row = cursor.fetchone()
+                            if row:
+                                pred_home_prob = row[0]
+                                predicted_home_win = 1 if pred_home_prob >= 0.5 else 0
+                                correct = 1 if predicted_home_win == home_win else 0
+                                
+                                cursor.execute(f"""
+                                    UPDATE predictions
+                                    SET actual_home_score = {placeholder},
+                                        actual_away_score = {placeholder},
+                                        actual_home_win = {placeholder},
+                                        correct = {placeholder}
+                                    WHERE game_id = {placeholder}
+                                """, (home_score, away_score, home_win, correct, game_id))
+                                
+                                updated += 1
+                                results.append({
+                                    "date": str(pred_date),
+                                    "game_id": game_id,
+                                    "score": f"{away_score}-{home_score}",
+                                    "correct": bool(correct)
+                                })
+                
+            except Exception as e:
+                print(f"Error processing date {pred_date}: {e}")
+                continue
         
         db.commit()
         cursor.close()
         
         return {
             "status": "success",
-            "message": f"Updated {updated} games",
+            "message": f"Updated {updated} games across {len(dates_to_check)} dates",
             "updated": updated,
-            "results": results
+            "dates_checked": len(dates_to_check),
+            "results": results[:20]  # Limit results shown
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating results: {str(e)}")
