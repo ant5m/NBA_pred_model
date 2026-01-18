@@ -28,12 +28,17 @@ from api.models import (
     OverallAccuracy,
     GamePrediction
 )
-from api.predictions import get_todays_predictions, get_predictions_for_date, save_predictions_to_db
 from api.analytics import get_monthly_accuracy, get_overall_accuracy
 from api.boxscore import get_box_score
 
 # Import for updating results
 from nba_api.live.nba.endpoints import scoreboard as live_scoreboard
+
+# Lazy import for predictions to avoid TensorFlow loading on startup
+def get_predictions_module():
+    """Lazy load predictions module to defer TensorFlow initialization."""
+    from api.predictions import get_todays_predictions, get_predictions_for_date, save_predictions_to_db
+    return get_todays_predictions, get_predictions_for_date, save_predictions_to_db
 
 app = FastAPI(
     title="NBA Prediction API",
@@ -105,6 +110,7 @@ def health_check():
 def get_today():
     """Get predictions for today's games."""
     try:
+        get_todays_predictions, _, save_predictions_to_db = get_predictions_module()
         predictions = get_todays_predictions()
         
         # Auto-save predictions to database
@@ -128,6 +134,7 @@ def get_today():
 def get_by_date(date_str: str):
     """Get predictions for a specific date (YYYY-MM-DD)."""
     try:
+        _, get_predictions_for_date, _ = get_predictions_module()
         target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
         predictions = get_predictions_for_date(target_date)
         return PredictionResponse(
