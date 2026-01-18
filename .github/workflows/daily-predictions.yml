@@ -1,0 +1,28 @@
+name: Generate Daily NBA Predictions
+
+on:
+  schedule:
+    # Run daily at 10 AM EST (3 PM UTC) to match Railway cron
+    - cron: '0 15 * * *'
+  workflow_dispatch: # Allow manual trigger from GitHub UI
+
+jobs:
+  generate-predictions:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Trigger prediction generation
+        run: |
+          echo "Generating daily NBA predictions..."
+          # This will call the /predictions/today endpoint which auto-saves
+          response=$(curl -s https://nbapredmodel-production.up.railway.app/predictions/today)
+          echo "Response: $response"
+          
+          # Check if predictions were generated
+          if echo "$response" | grep -q '"count"'; then
+            count=$(echo "$response" | grep -o '"count":[0-9]*' | grep -o '[0-9]*')
+            echo "✅ Generated $count predictions"
+          else
+            echo "❌ Prediction generation failed"
+            exit 1
+          fi

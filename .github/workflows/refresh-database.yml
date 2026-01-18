@@ -1,0 +1,20 @@
+name: Refresh NBA Stats Database
+
+on:
+  schedule:
+    # Run daily at 6 AM EST (11 AM UTC) to match Railway cron
+    - cron: '0 11 * * *'
+  workflow_dispatch: # Allow manual trigger from GitHub UI
+
+jobs:
+  refresh-database:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Note about database refresh
+        run: |
+          echo "⚠️  Database refresh requires rebuilding team/player stats"
+          echo "This is resource-intensive and handled by Railway deployments"
+          echo "Manual refresh not available via API endpoint"
+          echo "To refresh: Trigger a new Railway deployment or run build scripts manually"
+          echo "Skipping automated refresh via GitHub Actions"
