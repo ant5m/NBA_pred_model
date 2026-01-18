@@ -1,0 +1,26 @@
+name: Update NBA Prediction Results
+
+on:
+  schedule:
+    # Run daily at 3 AM EST (8 AM UTC)
+    - cron: '0 8 * * *'
+  workflow_dispatch: # Allow manual trigger from GitHub UI
+
+jobs:
+  update-results:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Update game results
+        run: |
+          echo "Updating NBA prediction results..."
+          response=$(curl -s -X POST https://nbapredmodel-production.up.railway.app/admin/update-results)
+          echo "Response: $response"
+          
+          # Check if update was successful
+          if echo "$response" | grep -q '"status":"success"'; then
+            echo "✅ Update successful"
+          else
+            echo "❌ Update failed"
+            exit 1
+          fi
