@@ -15,7 +15,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { TrendingUp, Award, Target, Zap } from "lucide-react";
+import { TrendingUp, Award, Target, Zap, RefreshCw } from "lucide-react";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 
 interface MonthlyAccuracy {
@@ -41,6 +41,8 @@ export default function AccuracyPage() {
   const [overallData, setOverallData] = useState<OverallAccuracy | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAccuracyData();
@@ -77,14 +79,65 @@ export default function AccuracyPage() {
     return format(new Date(parseInt(year), parseInt(month) - 1), "MMM yyyy");
   };
 
+  const updateResults = async () => {
+    setUpdating(true);
+    setUpdateMessage(null);
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/update-results`,
+        { method: "POST" }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to update results");
+      }
+
+      const data = await response.json();
+      setUpdateMessage(
+        `✓ ${data.message} (${data.updated} games updated)`
+      );
+
+      // Refresh accuracy data after update
+      await fetchAccuracyData();
+    } catch (err) {
+      setUpdateMessage(
+        `✗ ${err instanceof Error ? err.message : "Update failed"}`
+      );
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2 flex items-center gap-3">
-          <Award className="w-10 h-10 text-nba-blue" />
-          Model Accuracy
-        </h1>
+      <div className="mb-8 flex justify-between items-start">
+        <div>
+          <h1 className="text-4xl font-bold mb-2 flex items-center gap-3">
+            <Award className="w-10 h-10 text-nba-blue" />
+            Model Accuracy
+          </h1>
+        </div>
+        <button
+          onClick={updateResults}
+          disabled={updating || loading}
+          className="flex items-center gap-2 px-4 py-2 bg-nba-blue text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          <RefreshCw className={`w-4 h-4 ${updating ? 'animate-spin' : ''}`} />
+          {updating ? "Updating..." : "Update Results"}
+        </button>
       </div>
+
+      {/* Update Message */}
+      {updateMessage && (
+        <div className={`mb-4 p-4 rounded-lg ${
+          updateMessage.startsWith('✓') 
+            ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200'
+            : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'
+        }`}>
+          {updateMessage}
+        </div>
+      )}
 
       {/* Loading State */}
       {loading && (
