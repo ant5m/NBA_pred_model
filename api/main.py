@@ -421,6 +421,39 @@ def update_results():
         raise HTTPException(status_code=500, detail=f"Error updating results: {str(e)}")
 
 
+@app.post("/admin/retrain-model")
+def retrain_model():
+    """Manually trigger model retraining and recalibration. WARNING: This is resource-intensive."""
+    try:
+        import subprocess
+        
+        # Run the retrain script
+        result = subprocess.run(
+            ['python3', 'scripts/cron_retrain.py'],
+            capture_output=True,
+            text=True,
+            timeout=3600  # 1 hour timeout
+        )
+        
+        if result.returncode == 0:
+            return {
+                "status": "success",
+                "message": "Model retrained and recalibrated successfully",
+                "output": result.stdout
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Retraining failed",
+                "error": result.stderr,
+                "output": result.stdout
+            }
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="Retraining timeout (>1 hour)")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retraining model: {str(e)}")
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))

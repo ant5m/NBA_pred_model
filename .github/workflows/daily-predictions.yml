@@ -1,0 +1,27 @@
+name: Generate Daily NBA Predictions
+
+on:
+  schedule:
+    - cron: '0 15 * * *'  # 10 AM EST (3 PM UTC)
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  generate-predictions:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Generate today's predictions
+        run: |
+          curl -X GET "${{ secrets.RAILWAY_URL }}/predictions/today" \
+            -H "Content-Type: application/json" \
+            -o predictions.json
+          
+          cat predictions.json
+          
+          # Check if predictions were generated successfully
+          if grep -q '"count"' predictions.json; then
+            echo "✅ Predictions generated successfully"
+          else
+            echo "❌ Failed to generate predictions"
+            exit 1
+          fi
