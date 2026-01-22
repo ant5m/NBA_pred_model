@@ -424,34 +424,64 @@ def update_results():
 @app.post("/admin/retrain-model")
 def retrain_model():
     """Manually trigger model retraining and recalibration. WARNING: This is resource-intensive."""
+    import threading
+    from datetime import datetime
+    
+    def retrain_task():
+        """Background task to retrain the model."""
+        try:
+            print(f"\n[{datetime.now()}] Starting model retraining...")
+            
+            # Import training function
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from nba_model import train_ensemble_model
+            
+            # Train ensemble model
+            print("Training ensemble with 5 models, 50 epochs...")
+            train_ensemble_model(n_models=5, epochs=50)
+            
+            print(f"[{datetime.now()}] Model retrained successfully")
+            
+            # Recalibrate
+            print(f"[{datetime.now()}] Starting recalibration...")
+            import subprocess
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            calibrate_script = os.path.join(base_dir, 'calibrate_model.py')
+            
+            if os.path.exists(calibrate_script):
+                result = subprocess.run(
+                    ['python3', calibrate_script, '--ensemble'],
+                    cwd=base_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=600
+                )
+                if result.returncode == 0:
+                    print(f"[{datetime.now()}] Recalibration complete")
+                else:
+                    print(f"[{datetime.now()}] Recalibration warning: {result.stderr}")
+            else:
+                print(f"[{datetime.now()}] Calibration script not found, skipping")
+            
+            print(f"[{datetime.now()}] ✅ Retraining complete")
+            
+        except Exception as e:
+            print(f"[{datetime.now()}] ❌ Retraining error: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # Start retraining in background thread
     try:
-        import subprocess
+        thread = threading.Thread(target=retrain_task, daemon=True)
+        thread.start()
         
-        # Run the retrain script
-        result = subprocess.run(
-            ['python3', 'scripts/cron_retrain.py'],
-            capture_output=True,
-            text=True,
-            timeout=3600  # 1 hour timeout
-        )
-        
-        if result.returncode == 0:
-            return {
-                "status": "success",
-                "message": "Model retrained and recalibrated successfully",
-                "output": result.stdout
-            }
-        else:
-            return {
-                "status": "error",
-                "message": "Retraining failed",
-                "error": result.stderr,
-                "output": result.stdout
-            }
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=500, detail="Retraining timeout (>1 hour)")
+        return {
+            "status": "success",
+            "message": "Model retraining started in background. This will take 30-60 minutes. Check server logs for progress.",
+            "started_at": datetime.utcnow().isoformat()
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retraining model: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error starting retrain: {str(e)}")
 
 
 if __name__ == "__main__":

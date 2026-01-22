@@ -8,24 +8,27 @@ on:
 jobs:
   retrain-model:
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # 2 hour timeout for training
+    timeout-minutes: 5  # Just to trigger, actual training runs in background
     
     steps:
       - name: Trigger model retraining
         run: |
+          echo "Triggering model retraining on Railway..."
+          
           response=$(curl -X POST "${{ secrets.RAILWAY_URL }}/admin/retrain-model" \
             -H "Content-Type: application/json" \
-            -w "\n%{http_code}" \
-            -s)
+            -s -w "\n%{http_code}")
           
           http_code=$(echo "$response" | tail -n 1)
           body=$(echo "$response" | sed '$d')
           
-          echo "$body"
+          echo "Response:"
+          echo "$body" | jq '.' || echo "$body"
           
-          if [ "$http_code" != "200" ]; then
-            echo "❌ Retraining failed with status code: $http_code"
+          if [ "$http_code" = "200" ]; then
+            echo "✅ Model retraining triggered successfully"
+            echo "Training will take 30-60 minutes in the background on Railway"
+          else
+            echo "❌ Failed to trigger retraining (HTTP $http_code)"
             exit 1
           fi
-          
-          echo "✅ Model retraining completed successfully"
